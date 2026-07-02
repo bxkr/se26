@@ -1,0 +1,8 @@
+.venv
+venv
+.pycache
+pycache
+.vscode
+vscode
+.env
+env
