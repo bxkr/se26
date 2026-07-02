@@ -1,8 +1,18 @@
-.venv
-venv
-.pycache
-pycache
-.vscode
-vscode
+# virtual env
+.venv/
+venv/
+env/
+
+# python cache
+__pycache__/
+*.py[cod]
+
+# vscode
+.vscode/
+
+# env files
 .env
-env
+.env.*
+
+# misc
+.DS_Store
