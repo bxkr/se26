@@ -1,0 +1,50 @@
+
+se26
+├── backend/
+│   ├── app/
+│   │   └── services/
+│   │       ├── accuracy-etl-service/
+│   │       │   ├── app/
+│   │       │   │   ├── config.py
+│   │       │   │   └── main.py
+│   │       │   ├── Dockerfile
+│   │       │   └── requirements.txt
+│   │       ├── actual-weather-service/
+│   │       │   ├── app/
+│   │       │   │   ├── config.py
+│   │       │   │   └── main.py
+│   │       │   ├── Dockerfile
+│   │       │   └── requirements.txt
+│   │       ├── alert-service/
+│   │       │   ├── app/
+│   │       │   │   ├── config.py
+│   │       │   │   └── main.py
+│   │       │   ├── Dockerfile
+│   │       │   └── requirements.txt
+│   │       ├── analytics-api-service/
+│   │       │   ├── app/
+│   │       │   │   ├── config.py
+│   │       │   │   └── main.py
+│   │       │   ├── Dockerfile
+│   │       │   └── requirements.txt
+│   │       └── forecast-service/
+│   │           ├── app/
+│   │           │   ├── config.py
+│   │           │   └── main.py
+│   │           ├── Dockerfile
+│   │           └── requirements.txt
+│   └── docker-compose.yml
+├── frontend/
+├── jun-29/
+│   └── samples/
+│       ├── ADR-001.md
+│       ├── ADR-002.md
+│       ├── ADR-003.md
+│       ├── ADR-004.md
+│       ├── ADR-005.md
+│       ├── ADR_comparison.md
+│       ├── ADR_sample.md
+│       └── FR-NFR.md
+├── jun-30/
+│   └── overview.md
+└── README.md
