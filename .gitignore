@@ -4,5 +4,3 @@ venv
 pycache
 .vscode
 vscode
-.env
-env
