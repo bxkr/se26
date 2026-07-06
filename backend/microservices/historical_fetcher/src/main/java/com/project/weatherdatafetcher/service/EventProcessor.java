@@ -5,6 +5,7 @@ import com.project.weatherdatafetcher.dto.ApiResponse;
 import com.project.weatherdatafetcher.dto.InputEvent;
 
 import com.project.weatherdatafetcher.dto.OutputReceipt;
+import com.project.weatherdatafetcher.model.Measurement;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Valid;
 import jakarta.validation.Validator;
@@ -27,8 +28,10 @@ import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import tools.jackson.databind.ObjectMapper;
 
 import java.time.LocalDate;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import static com.project.weatherdatafetcher.enums.RequestStatus.SUCCESS;
 
@@ -64,6 +67,10 @@ public class EventProcessor {
                     .datesUntil(event.endDate().plusDays(1))
                     .toList();
 
+            Set<String> targetWmoIndexes = event.RequestedWmoIndexes().stream()
+                    .map(String::valueOf)
+                    .collect(Collectors.toSet());
+
             List<ApiResponse> validResponses = Flux.fromIterable(dates)
                     .flatMapSequential(date -> webClient.get()
                                     .uri(UriComponentsBuilder.fromUriString(externalApiUrl)
@@ -73,12 +80,23 @@ public class EventProcessor {
                                     .retrieve()
                                     .bodyToMono(ApiResponse.class)
                                     .map(response -> {
+
                                         Set<ConstraintViolation<ApiResponse>> violations = validator.validate(response);
                                         if (!violations.isEmpty()) {
                                             throw new IllegalArgumentException("Ошибка валидации ответа API: " + violations);
                                         }
+
+                                        if (response.getStations() != null) {
+                                            List<Measurement> filtered = response.getStations().stream()
+                                                    .filter(st -> st.wmo_index() != null && targetWmoIndexes.contains(String.valueOf(st.wmo_index())))
+                                                    .toList();
+
+                                            response.setStations(filtered);
+                                        }
                                         return response;
                                     })
+
+                                    .filter(response -> response.getStations() != null && !response.getStations().isEmpty())
                                     .onErrorResume(ex -> {
                                         log.error("Ошибка при обработке даты {}: {}", date, ex.getMessage());
                                         return Mono.empty();
@@ -89,11 +107,12 @@ public class EventProcessor {
 
 
             if (validResponses == null || validResponses.isEmpty()) {
-                throw new RuntimeException("Не удалось получить валидные данные ни за один день");
+                log.warn("Не удалось получить валидные данные ни за один день для ID: {}", event.eventId());
+                ack.acknowledge();
+                return;
             }
 
             String jsonPayload = objectMapper.writeValueAsString(validResponses);
-
 
             s3Client.putObject(
                     PutObjectRequest.builder()
@@ -105,17 +124,24 @@ public class EventProcessor {
             );
             log.info("Сырой JSON успешно сохранен в S3 по ключу: {}", s3Key);
 
-
             OutputReceipt receipt = new OutputReceipt(event.eventId(), s3Key, SUCCESS);
-            kafkaTemplate.send(outputTopic, event.eventId(), receipt).get();
+
+            kafkaTemplate.send(outputTopic, event.eventId(), receipt)
+                    .whenComplete((result, ex) -> {
+                        if (ex != null) {
+                            log.error("Не удалось отправить квитанцию в Kafka для ID: {}", event.eventId(), ex);
+                        } else {
+                            log.info("Успешно отправлено в Kafka для ID: {}", event.eventId());
+                        }
+                    });
 
             ack.acknowledge();
             log.info(">> Событие {} успешно обработано и подтверждено", event.eventId());
 
         } catch (Exception e) {
-
             log.error("Критический сбой при обработке события ID: {}.", event.eventId(), e);
             throw new RuntimeException("Ошибка обработки события Kafka", e);
         }
     }
+
 }
