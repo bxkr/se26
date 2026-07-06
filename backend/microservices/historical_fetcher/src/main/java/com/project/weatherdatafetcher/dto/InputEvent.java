@@ -3,7 +3,7 @@ package com.project.weatherdatafetcher.dto;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
-import software.amazon.awssdk.services.s3.endpoints.internal.Value;
+
 
 import java.time.LocalDate;
 import java.util.List;

@@ -10,13 +10,3 @@ public record Measurement(
         Double precipitation
 ) {}
 
-
-/*
-"wmo_index": "20674",
-      "name": "Диксон",
-      "country": "Россия",
-      "min_temp": -35.1,
-      "avg_temp": -31.9,
-      "max_temp": -25.9,
-      "precipitation": 0
- */

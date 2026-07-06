@@ -1,7 +1,4 @@
 package com.project.weatherdatafetcher.dto;
-import jakarta.persistence.*;
-
-import com.project.weatherdatafetcher.enums.RequestStatus;
 
 import java.time.LocalDateTime;
 

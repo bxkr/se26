@@ -29,12 +29,10 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import static com.project.weatherdatafetcher.enums.RequestStatus.SUCCESS;
 
 
 @Service
