@@ -28,6 +28,7 @@ import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import tools.jackson.databind.ObjectMapper;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -124,7 +125,9 @@ public class EventProcessor {
             );
             log.info("Сырой JSON успешно сохранен в S3 по ключу: {}", s3Key);
 
-            OutputReceipt receipt = new OutputReceipt(event.eventId(), s3Key, SUCCESS);
+            OutputReceipt receipt = new OutputReceipt(event.eventId(), event.traceId(), "weather.actual.raw.created",
+                    "historical_fetcher", bucketName, s3Key, event.startDate().toString(), event.RequestedWmoIndexes().size(),
+                    event.schemaVersion(), LocalDateTime.now());
 
             kafkaTemplate.send(outputTopic, event.eventId(), receipt)
                     .whenComplete((result, ex) -> {

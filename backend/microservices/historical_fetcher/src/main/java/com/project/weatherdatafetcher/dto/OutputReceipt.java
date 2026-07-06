@@ -3,10 +3,17 @@ import jakarta.persistence.*;
 
 import com.project.weatherdatafetcher.enums.RequestStatus;
 
-public record OutputReceipt(
-        String eventId,
-        String s3Key,
+import java.time.LocalDateTime;
 
-        @Enumerated(EnumType.STRING)
-        RequestStatus status
+public record OutputReceipt(
+        String event_id,
+        String trace_id,
+        String event_type,
+        String source_name,
+        String bucket,
+        String object_key,
+        String observation_date,
+        Integer station_count,
+        Integer schema_version,
+        LocalDateTime created_at
 ) {}
