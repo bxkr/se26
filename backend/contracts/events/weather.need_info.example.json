@@ -1,0 +1,13 @@
+{
+  "event_id": "c5d3576d-bb69-4a0c-a087-095fe8a49df6",
+  "trace_id": "8e3d7dc8-0197-4e4a-945e-f8d9130c57d9",
+  "event_type": "weather.need_info",
+  "dataset_type": "actual",
+  "requested_by": "analytics_api",
+  "date_from": "1960-01-01",
+  "date_to": "1960-01-31",
+  "wmo_indexes": ["20674", "20891"],
+  "reason": "missing_clean_data",
+  "schema_version": 1,
+  "created_at": "2026-07-06T12:00:00Z"
+}

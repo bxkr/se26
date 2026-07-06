@@ -1,0 +1,12 @@
+{
+  "event_id": "8f60b5dc-99f9-4dc0-a7c1-04b4be1635ec",
+  "trace_id": "1c0aa3e8-2aa8-4d0b-8c7e-a37d7fa4fb4e",
+  "event_type": "weather.actual.raw.created",
+  "source_name": "historical_fetcher",
+  "bucket": "weather-raw",
+  "object_key": "actual/date=1960-01-01/3c7d3b2f-4f88-4eaf-9f6b-11fa7d91d601.json",
+  "observation_date": "1960-01-01",
+  "station_count": 2,
+  "schema_version": 1,
+  "created_at": "2026-07-06T12:10:00Z"
+}
