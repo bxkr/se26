@@ -4,7 +4,6 @@ package com.project.weatherdatafetcher.service;
 import com.project.weatherdatafetcher.dto.ApiResponse;
 import com.project.weatherdatafetcher.dto.InputEvent;
 
-import com.project.weatherdatafetcher.dto.MappedObject;
 import com.project.weatherdatafetcher.dto.OutputReceipt;
 import com.project.weatherdatafetcher.model.Measurement;
 import jakarta.validation.ConstraintViolation;
@@ -22,16 +21,19 @@ import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.util.UriComponentsBuilder;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
+import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
 import tools.jackson.databind.ObjectMapper;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.stream.Collectors;
 
 
@@ -58,9 +60,9 @@ public class EventProcessor {
 
     @KafkaListener(topics = "${app.kafka.input-topic}", groupId = "s3-uploader-historical-group")
     public void handleEvent(@Valid @Payload InputEvent event, Acknowledgment ack) {
+
         log.info(">> Получено событие. Обработка данных для ID: {}", event.eventId());
 
-        String s3Key = "raw_responses/date=" + event.startDate() + "/data_" + event.eventId() + ".json";
         if(event.RequestedWmoIndexes().isEmpty()){
             log.info("Получен пустой список RequestedWmoIndexes.");
             ack.acknowledge();
@@ -72,15 +74,18 @@ public class EventProcessor {
             return;
         }
         try {
+
             List<LocalDate> dates = event.startDate()
                     .datesUntil(event.endDate().plusDays(1))
                     .toList();
+
+            ConcurrentLinkedQueue<String> s3Keys = new ConcurrentLinkedQueue<>();
 
             Set<String> targetWmoIndexes = event.RequestedWmoIndexes().stream()
                     .map(String::valueOf)
                     .collect(Collectors.toSet());
 
-            List<ApiResponse> validResponses = Flux.fromIterable(dates)
+            Flux.fromIterable(dates)
                     .flatMapSequential(date -> webClient.get()
                                     .uri(UriComponentsBuilder.fromUriString(externalApiUrl)
                                             .queryParam("date", date)
@@ -88,61 +93,69 @@ public class EventProcessor {
                                             .toUri())
                                     .retrieve()
                                     .bodyToMono(ApiResponse.class)
-                                    .map(response -> {
-
+                                    .doOnNext(response -> {
                                         Set<ConstraintViolation<ApiResponse>> violations = validator.validate(response);
                                         if (!violations.isEmpty()) {
                                             throw new IllegalArgumentException("Ошибка валидации ответа API: " + violations);
                                         }
-
+                                    })
+                                    .map(response -> {
                                         if (response.getStations() != null) {
                                             List<Measurement> filtered = response.getStations().stream()
                                                     .filter(st -> st.wmo_index() != null && targetWmoIndexes.contains(String.valueOf(st.wmo_index())))
                                                     .toList();
-
                                             response.setStations(filtered);
                                         }
                                         return response;
                                     })
-
                                     .filter(response -> response.getStations() != null && !response.getStations().isEmpty())
                                     .onErrorResume(ex -> {
-                                        log.error("Ошибка при обработке даты {}: {}", date, ex.getMessage());
+                                        log.error("Ошибка при получении данных из API для даты {}: {}", date, ex.getMessage());
                                         return Mono.empty();
                                     })
+                                    .flatMap(response -> Mono.fromRunnable(() -> {
+                                        String dailyS3Key = "actual/date=" + response.getDate().toString() + ".json";
+
+
+                                        if (isObjectExists(bucketName, dailyS3Key)) {
+                                            log.info("Файл для даты {} уже существует в S3. Пропускаем перезапись.", response.getDate());
+                                            s3Keys.add(dailyS3Key);
+                                            return;
+                                        }
+
+                                        try {
+                                            String jsonPayload = objectMapper.writeValueAsString(response);
+                                            s3Client.putObject(
+                                                    PutObjectRequest.builder()
+                                                            .bucket(bucketName)
+                                                            .key(dailyS3Key)
+                                                            .contentType("application/json")
+                                                            .build(),
+                                                    RequestBody.fromString(jsonPayload)
+                                            );
+                                            s3Keys.add(dailyS3Key);
+                                            log.info("Файл успешно загружен в S3: {}", dailyS3Key);
+                                        } catch (Exception e) {
+                                            log.error("Ошибка сохранения в S3 для даты {}: {}", date, e.getMessage());
+                                            throw new RuntimeException("Сбой записи в S3", e);
+                                        }
+                                    }).subscribeOn(Schedulers.boundedElastic()))
                             , 5)
-                    .collectList()
-                    .block();
+                    .then()
+                    .block(java.time.Duration.ofMinutes(3));
 
-
-            if (validResponses == null || validResponses.isEmpty()) {
-                log.warn("Не удалось получить валидные данные ни за один день для ID: {}", event.eventId());
+            if (s3Keys.isEmpty()) {
+                log.warn("Ни один файл не был сохранен в S3 для ID: {}", event.eventId());
                 ack.acknowledge();
                 return;
             }
 
-            MappedObject validResult = MappedObject.builder()
-                    .date_from(event.startDate().toString())
-                    .date_to(event.endDate().toString())
-                    .days(validResponses)
-                    .build();
-
-            String jsonPayload = objectMapper.writeValueAsString(validResult);
-
-            s3Client.putObject(
-                    PutObjectRequest.builder()
-                            .bucket(bucketName)
-                            .key(s3Key)
-                            .contentType("application/json")
-                            .build(),
-                    RequestBody.fromString(jsonPayload)
-            );
-            log.info("Сырой JSON успешно сохранен в S3 по ключу: {}", s3Key);
-
-            OutputReceipt receipt = new OutputReceipt(java.util.UUID.randomUUID().toString(), event.traceId(),
+            OutputReceipt receipt = new OutputReceipt(
+                    java.util.UUID.randomUUID().toString(), event.traceId(),
                     "weather.actual.raw.created", "historical_fetcher", bucketName,
-                    s3Key, event.startDate().toString(), event.endDate().toString(), event.RequestedWmoIndexes().size(),
-                    event.schemaVersion(), LocalDateTime.now());
+                    new ArrayList<>(s3Keys), event.startDate().toString(),
+                    event.endDate().toString(), event.schemaVersion(), LocalDateTime.now()
+            );
 
             kafkaTemplate.send(outputTopic, event.eventId(), receipt).get(10, java.util.concurrent.TimeUnit.SECONDS);
             log.info("Успешно отправлена квитанция в Kafka для ID: {}", event.eventId());
@@ -153,6 +166,20 @@ public class EventProcessor {
         } catch (Exception e) {
             log.error("Критический сбой при обработке события ID: {}.", event.eventId(), e);
             throw new RuntimeException("Ошибка обработки события Kafka", e);
+        }
+
+    }
+
+
+    private boolean isObjectExists(String bucket, String key) {
+        try {
+            s3Client.headObject(HeadObjectRequest.builder().bucket(bucket).key(key).build());
+            return true;
+        } catch (NoSuchKeyException e) {
+            return false;
+        } catch (Exception e) {
+            log.error("Не удалось проверить наличие объекта {} в S3 из-за сетевой ошибки", key, e);
+            return false;
         }
     }
 
