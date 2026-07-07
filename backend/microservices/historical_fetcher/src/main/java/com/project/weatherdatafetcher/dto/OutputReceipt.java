@@ -9,7 +9,8 @@ public record OutputReceipt(
         String source_name,
         String bucket,
         String object_key,
-        String observation_date,
+        String date_from,
+        String date_to,
         Integer station_count,
         Integer schema_version,
         LocalDateTime created_at

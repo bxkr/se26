@@ -4,6 +4,7 @@ package com.project.weatherdatafetcher.service;
 import com.project.weatherdatafetcher.dto.ApiResponse;
 import com.project.weatherdatafetcher.dto.InputEvent;
 
+import com.project.weatherdatafetcher.dto.MappedObject;
 import com.project.weatherdatafetcher.dto.OutputReceipt;
 import com.project.weatherdatafetcher.model.Measurement;
 import jakarta.validation.ConstraintViolation;
@@ -60,7 +61,16 @@ public class EventProcessor {
         log.info(">> Получено событие. Обработка данных для ID: {}", event.eventId());
 
         String s3Key = "raw_responses/date=" + event.startDate() + "/data_" + event.eventId() + ".json";
-
+        if(event.RequestedWmoIndexes().isEmpty()){
+            log.info("Получен пустой список RequestedWmoIndexes.");
+            ack.acknowledge();
+            return;
+        }
+        if(event.startDate().isAfter(event.endDate())){
+            log.info("Получены невалидные даты.");
+            ack.acknowledge();
+            return;
+        }
         try {
             List<LocalDate> dates = event.startDate()
                     .datesUntil(event.endDate().plusDays(1))
@@ -111,7 +121,13 @@ public class EventProcessor {
                 return;
             }
 
-            String jsonPayload = objectMapper.writeValueAsString(validResponses);
+            MappedObject validResult = MappedObject.builder()
+                    .date_from(event.startDate().toString())
+                    .date_to(event.endDate().toString())
+                    .days(validResponses)
+                    .build();
+
+            String jsonPayload = objectMapper.writeValueAsString(validResult);
 
             s3Client.putObject(
                     PutObjectRequest.builder()
@@ -123,18 +139,13 @@ public class EventProcessor {
             );
             log.info("Сырой JSON успешно сохранен в S3 по ключу: {}", s3Key);
 
-            OutputReceipt receipt = new OutputReceipt(event.eventId(), event.traceId(), "weather.actual.raw.created",
-                    "historical_fetcher", bucketName, s3Key, event.startDate().toString(), event.RequestedWmoIndexes().size(),
+            OutputReceipt receipt = new OutputReceipt(java.util.UUID.randomUUID().toString(), event.traceId(),
+                    "weather.actual.raw.created", "historical_fetcher", bucketName,
+                    s3Key, event.startDate().toString(), event.endDate().toString(), event.RequestedWmoIndexes().size(),
                     event.schemaVersion(), LocalDateTime.now());
 
-            kafkaTemplate.send(outputTopic, event.eventId(), receipt)
-                    .whenComplete((result, ex) -> {
-                        if (ex != null) {
-                            log.error("Не удалось отправить квитанцию в Kafka для ID: {}", event.eventId(), ex);
-                        } else {
-                            log.info("Успешно отправлено в Kafka для ID: {}", event.eventId());
-                        }
-                    });
+            kafkaTemplate.send(outputTopic, event.eventId(), receipt).get(10, java.util.concurrent.TimeUnit.SECONDS);
+            log.info("Успешно отправлена квитанция в Kafka для ID: {}", event.eventId());
 
             ack.acknowledge();
             log.info(">> Событие {} успешно обработано и подтверждено", event.eventId());
