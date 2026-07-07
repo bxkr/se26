@@ -1,10 +1,20 @@
-"""PySpark job: PostgreSQL(weather_actual) -> ClickHouse (RAW/ODS/DM).
+"""PySpark job: PostgreSQL(weather_actual|weather_forecast) -> ClickHouse (RAW/ODS/DM).
 
 Реализует семантику infra/clickhouse/pipeline/{01,02,03}*.sql (эталон
 RAW->ODS->DM из лабы sem8, Postgres-диалект, читает несуществующие
-stations/weather_data) поверх реальной схемы infra/clickhouse/schema.sql,
-источник данных — PostgreSQL-таблица weather_actual, которую пишет
-etl_service. Подробности: data/pipeline_flow.md, "Принятые решения", п.3.
+stations/weather_data) поверх реальной схемы infra/clickhouse/schema.sql.
+--dataset-type выбирает источник и целевые таблицы: "actual" читает
+weather_actual (пишет etl_service) и пишет в *_weather* таблицы, "forecast"
+читает weather_forecast (временный stand-in под predict_fetcher, см.
+infra/postgres/init.sql) и пишет в *_forecast* таблицы. Подробности:
+data/pipeline_flow.md, "Принятые решения", п.3 и п.5.
+
+После записи DM-слоя (в обеих ветках) пересчитывается витрина
+dm_fct_forecast_error — inner join dm_fct_daily_weather x dm_fct_daily_forecast
+по (wmo_index, day) для этого business_date, знаковая и абсолютная ошибка на
+каждую метрику. Если второй стороны ещё нет — join пуст, ничего не пишется;
+витрина дозаполнится, когда придёт вторая сторона (порядок actual/forecast
+не важен).
 
 Запускается Airflow DAG'ом dm_pipeline_dag.py через spark-submit
 --master local[*] (без отдельного Spark-кластера, lean-профиль).
@@ -19,11 +29,31 @@ import os
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
+TABLE_CONFIG = {
+    "actual": {
+        "source_table": "weather_actual",
+        "raw_table": "raw_weather_events",
+        "ods_table": "ods_daily_weather",
+        "dm_table": "dm_fct_daily_weather",
+    },
+    "forecast": {
+        "source_table": "weather_forecast",
+        "raw_table": "raw_forecast_events",
+        "ods_table": "ods_daily_forecast",
+        "dm_table": "dm_fct_daily_forecast",
+    },
+}
+
+ERROR_METRICS = ["temperature", "temp_min", "temp_max", "precipitation_mm"]
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--business-date", required=True, help="YYYY-MM-DD, weather_actual.observation_date")
+    parser.add_argument("--business-date", required=True, help="YYYY-MM-DD, observation_date/day")
     parser.add_argument("--trace-id", required=True)
+    parser.add_argument(
+        "--dataset-type", required=True, choices=sorted(TABLE_CONFIG), help="actual|forecast"
+    )
     parser.add_argument("--result-path", required=True, help="where to write {record_count, business_date} JSON")
     return parser.parse_args()
 
@@ -42,8 +72,54 @@ def clickhouse_jdbc_url() -> str:
     return f"jdbc:clickhouse://{host}:{port}/{db}"
 
 
+def recompute_forecast_error(
+    spark: SparkSession, *, business_date: str, clickhouse_props: dict
+) -> None:
+    """Recompute dm_fct_forecast_error for business_date from the current DM
+    tables (both actual and forecast may or may not be populated yet)."""
+    weather_df = spark.read.jdbc(
+        url=clickhouse_jdbc_url(),
+        table="dm_fct_daily_weather_current",
+        properties=clickhouse_props,
+    ).filter(F.col("day") == business_date)
+    forecast_df = spark.read.jdbc(
+        url=clickhouse_jdbc_url(),
+        table="dm_fct_daily_forecast_current",
+        properties=clickhouse_props,
+    ).filter(F.col("day") == business_date)
+
+    joined = weather_df.alias("w").join(
+        forecast_df.alias("f"),
+        on=(F.col("w.wmo_index") == F.col("f.wmo_index")) & (F.col("w.day") == F.col("f.day")),
+        how="inner",
+    )
+
+    if joined.take(1) == []:
+        return
+
+    error_cols = []
+    for metric in ERROR_METRICS:
+        error_cols.append((F.col(f"f.{metric}") - F.col(f"w.{metric}")).alias(f"{metric}_error"))
+        error_cols.append(
+            F.abs(F.col(f"f.{metric}") - F.col(f"w.{metric}")).alias(f"{metric}_abs_error")
+        )
+
+    error_out = joined.select(
+        F.col("w.wmo_index").alias("wmo_index"),
+        F.col("w.day").alias("day"),
+        *error_cols,
+        F.col("w.trace_id").alias("actual_trace_id"),
+        F.col("f.trace_id").alias("forecast_trace_id"),
+        F.current_timestamp().alias("ingested_at"),
+    )
+    error_out.write.mode("append").jdbc(
+        url=clickhouse_jdbc_url(), table="dm_fct_forecast_error", properties=clickhouse_props
+    )
+
+
 def main() -> None:
     args = parse_args()
+    table_config = TABLE_CONFIG[args.dataset_type]
 
     spark = (
         SparkSession.builder.appName(f"dm_pipeline-{args.trace_id}")
@@ -64,7 +140,7 @@ def main() -> None:
 
     raw_df = spark.read.jdbc(
         url=postgres_jdbc_url(),
-        table="weather_actual",
+        table=table_config["source_table"],
         properties=postgres_props,
     ).filter(F.col("observation_date") == args.business_date)
 
@@ -73,10 +149,10 @@ def main() -> None:
     ingested_at_col = F.current_timestamp()
     trace_id_lit = F.lit(args.trace_id)
 
-    # RAW: аудит-зеркало исходных строк weather_actual для этого business_date.
+    # RAW: аудит-зеркало исходных строк для этого business_date.
     raw_out = raw_df.withColumn("ingested_at", ingested_at_col)
     raw_out.write.mode("append").jdbc(
-        url=clickhouse_jdbc_url(), table="raw_weather_events", properties=clickhouse_props
+        url=clickhouse_jdbc_url(), table=table_config["raw_table"], properties=clickhouse_props
     )
 
     # ODS: типизированный дневной срез (semantics: pipeline/02_ods_daily_tttr.sql).
@@ -95,7 +171,7 @@ def main() -> None:
         .withColumn("ingested_at", ingested_at_col)
     )
     ods_out.write.mode("append").jdbc(
-        url=clickhouse_jdbc_url(), table="ods_daily_weather", properties=clickhouse_props
+        url=clickhouse_jdbc_url(), table=table_config["ods_table"], properties=clickhouse_props
     )
 
     # DM: витрина (semantics: pipeline/03_dm_fct_daily_weather.sql — там
@@ -112,12 +188,23 @@ def main() -> None:
         F.col("ingested_at"),
     )
     dm_out.write.mode("append").jdbc(
-        url=clickhouse_jdbc_url(), table="dm_fct_daily_weather", properties=clickhouse_props
+        url=clickhouse_jdbc_url(), table=table_config["dm_table"], properties=clickhouse_props
+    )
+
+    recompute_forecast_error(
+        spark, business_date=args.business_date, clickhouse_props=clickhouse_props
     )
 
     os.makedirs(os.path.dirname(args.result_path), exist_ok=True)
     with open(args.result_path, "w") as fh:
-        json.dump({"record_count": record_count, "business_date": args.business_date}, fh)
+        json.dump(
+            {
+                "record_count": record_count,
+                "business_date": args.business_date,
+                "dataset_type": args.dataset_type,
+            },
+            fh,
+        )
 
     spark.stop()
 

@@ -4,7 +4,9 @@
 image:
   repository: cr.yandex/crpmc4ksa9bqvd59g3dm/dm-pipeline/dm-trigger-image
   tag: "latest"
-  pullPolicy: IfNotPresent
+  # Always, not IfNotPresent: actively iterating under a floating "latest"
+  # tag — IfNotPresent silently keeps whatever digest is already cached.
+  pullPolicy: Always
 
 nameOverride: ""
 fullnameOverride: ""

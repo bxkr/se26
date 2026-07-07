@@ -28,6 +28,7 @@ class CleanEventHandler:
         event_id = event.get("event_id", "")
         trace_id = event.get("trace_id", "")
         business_date = event.get("observation_date")
+        dataset_type = event.get("dataset_type", "actual")
 
         try:
             if not trace_id or not business_date:
@@ -39,6 +40,7 @@ class CleanEventHandler:
                 event_id=event_id or str(uuid.uuid4()),
                 trace_id=trace_id,
                 business_date=business_date,
+                dataset_type=dataset_type,
             )
         except (AirflowTriggerError, ValueError) as exc:
             self._log_error(

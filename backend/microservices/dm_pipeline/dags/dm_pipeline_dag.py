@@ -40,6 +40,7 @@ def publish_dm_ready(**context) -> None:
     conf = context["dag_run"].conf or {}
     trace_id = conf["trace_id"]
     business_date = conf["business_date"]
+    dataset_type = conf.get("dataset_type", "actual")
 
     with open(_result_path(trace_id)) as fh:
         result = json.load(fh)
@@ -48,7 +49,7 @@ def publish_dm_ready(**context) -> None:
         "event_id": str(uuid.uuid4()),
         "trace_id": trace_id,
         "event_type": "weather.dm.ready",
-        "dataset_type": "actual",
+        "dataset_type": dataset_type,
         "observation_date": business_date,
         "record_count": result["record_count"],
         "schema_version": 1,
@@ -98,6 +99,7 @@ with DAG(
             f"spark-submit --master local[2] --driver-memory 1g --jars {SPARK_JARS} {SPARK_JOB_PATH} "
             "--business-date {{ dag_run.conf['business_date'] }} "
             "--trace-id {{ dag_run.conf['trace_id'] }} "
+            "--dataset-type {{ dag_run.conf.get('dataset_type', 'actual') }} "
             f"--result-path {RESULT_DIR}/"
             "{{ dag_run.conf['trace_id'] }}.json"
         ),
