@@ -1,0 +1,110 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kafka.fullname" . }}
+  labels:
+    {{- include "kafka.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "kafka.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "kafka.labels" . | nindent 8 }}
+    spec:
+      # Kubernetes auto-injects <SVC>_PORT-style env vars for every Service
+      # in the namespace (Docker-links compat). Our Service is named "kafka",
+      # so without this, KAFKA_PORT=tcp://... gets injected and cp-kafka's
+      # entrypoint treats KAFKA_PORT as fatal deprecated config (exit 1).
+      enableServiceLinks: false
+      # cp-kafka's entrypoint runs as uid 1000 (appuser) directly and does
+      # not chown the data dir itself (unlike the postgres/clickhouse
+      # images) — a freshly provisioned PVC is root-owned, so without this
+      # the broker can't write to /var/lib/kafka/data.
+      securityContext:
+        fsGroup: 1000
+      containers:
+        - name: kafka
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: KAFKA_NODE_ID
+              value: "1"
+            - name: KAFKA_PROCESS_ROLES
+              value: "broker,controller"
+            # Self-address for the controller quorum — must NOT go through
+            # the Service (kafka:9093): the Service only routes to this pod
+            # once it's Ready, but readiness depends on the broker reaching
+            # its own controller first. Using POD_IP breaks that cycle.
+            - name: KAFKA_CONTROLLER_QUORUM_VOTERS
+              value: "1@$(POD_IP):9093"
+            - name: KAFKA_LISTENERS
+              value: "PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093"
+            - name: KAFKA_ADVERTISED_LISTENERS
+              value: "PLAINTEXT://{{ include "kafka.fullname" . }}:9092"
+            - name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP
+              value: "PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT"
+            - name: KAFKA_CONTROLLER_LISTENER_NAMES
+              value: "CONTROLLER"
+            - name: KAFKA_INTER_BROKER_LISTENER_NAME
+              value: "PLAINTEXT"
+            - name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR
+              value: "1"
+            - name: KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR
+              value: "1"
+            - name: KAFKA_TRANSACTION_STATE_LOG_MIN_ISR
+              value: "1"
+            - name: KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS
+              value: "0"
+            - name: KAFKA_AUTO_CREATE_TOPICS_ENABLE
+              value: "false"
+            - name: CLUSTER_ID
+              value: {{ .Values.kraft.clusterId | quote }}
+            - name: KAFKA_LOG_DIRS
+              value: "/var/lib/kafka/data"
+          ports:
+            - name: broker
+              containerPort: 9092
+            - name: controller
+              containerPort: 9093
+          volumeMounts:
+            # Mounted one level above KAFKA_LOG_DIRS: a fresh ext4 PV has a
+            # lost+found dir at its root, and Kafka's LogManager treats every
+            # entry under log.dirs as topic-partition data and refuses to
+            # start if it finds one that isn't (same reasoning as PGDATA
+            # being a subdir in the postgres chart).
+            - name: data
+              mountPath: /var/lib/kafka
+          # Plain TCP probes, not `kafka-topics --list`: that CLI resolves
+          # the broker's advertised.listeners (kafka:9092, the Service
+          # ClusterIP) and reconnects through it — but the Service only
+          # routes to this pod once it's Ready, so the exec probe deadlocks
+          # against its own not-yet-ready state (and separately, spinning up
+          # a JVM per probe call is its own source of timeouts under a
+          # tight CPU limit). TCP avoids both problems.
+          readinessProbe:
+            tcpSocket:
+              port: broker
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: broker
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 5
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "kafka.fullname" . }}

@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "dm-trigger.fullname" . }}
+  labels:
+    {{- include "dm-trigger.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "dm-trigger.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "dm-trigger.labels" . | nindent 8 }}
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: dm-trigger
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          envFrom:
+            - secretRef:
+                name: {{ include "dm-trigger.fullname" . }}
+          env:
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: {{ .Values.kafka.bootstrapServers | quote }}
+            - name: KAFKA_TOPIC
+              value: {{ .Values.kafka.topic | quote }}
+            - name: KAFKA_GROUP_ID
+              value: {{ .Values.kafka.groupId | quote }}
+            - name: AIRFLOW_BASE_URL
+              value: {{ .Values.airflow.baseUrl | quote }}
+            - name: AIRFLOW_DAG_ID
+              value: {{ .Values.airflow.dagId | quote }}
+            - name: AIRFLOW_API_USERNAME
+              value: {{ .Values.airflow.username | quote }}
+          ports:
+            - name: health
+              containerPort: 8000
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
