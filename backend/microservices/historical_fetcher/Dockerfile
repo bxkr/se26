@@ -1,45 +1,25 @@
-# Stage 1: build with Gradle wrapper on JDK 21
-FROM eclipse-temurin:21-jdk-jammy AS builder
+FROM eclipse-temurin:21-jdk AS build
 
-WORKDIR /home/app
+WORKDIR /build
 
-# Нужны bash/unzip для gradle wrapper
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    bash \
-    unzip \
-    curl \
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl unzip ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy gradle wrapper and project files
-COPY build.gradle settings.gradle gradlew gradlew.bat /home/app/
-COPY gradle /home/app/gradle
-COPY src /home/app/src
+COPY build.gradle settings.gradle gradlew gradlew.bat ./
+COPY gradle ./gradle
+COPY src ./src
 
-# Ensure wrapper is executable
-RUN chmod +x gradlew
+RUN sed -i 's/\r$//' gradlew \
+    && chmod +x gradlew \
+    && ./gradlew clean bootJar --no-daemon
 
-# Build jar
-RUN ./gradlew --no-daemon clean build
-
-# Найти runnable jar и скопировать в фиксированное имя
-RUN JAR_PATH=$(find /home/app/build/libs -type f -name "*.jar" ! -name "*-plain.jar" | head -n 1) \
-    && test -n "$JAR_PATH" \
-    && cp "$JAR_PATH" /home/app/app.jar
-
-# Stage 2: runtime on JRE 21
-FROM eclipse-temurin:21-jre-jammy
+FROM eclipse-temurin:21-jre
 
 WORKDIR /app
 
-COPY --from=builder /home/app/app.jar /app/app.jar
+COPY --from=build /build/build/libs/*.jar /app/app.jar
 
 ENV JAVA_OPTS=""
-ENV KAFKA_BOOTSTRAP_SERVERS="kafka:9092"
-ENV S3_ENDPOINT="http://minio:9000"
-ENV S3_ACCESS_KEY="minioadmin"
-ENV S3_SECRET_KEY="minioadmin"
-ENV RAW_BUCKET="weather-raw"
 
-EXPOSE 8080
-
-CMD ["sh", "-c", "java $JAVA_OPTS -jar /app/app.jar"]
+ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar /app/app.jar"]
