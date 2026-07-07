@@ -58,7 +58,9 @@ public class EventProcessor {
     @Value("${app.kafka.output-topic}")
     private String outputTopic;
 
-    @KafkaListener(topics = "${app.kafka.input-topic}", groupId = "s3-uploader-historical-group")
+    @KafkaListener(topics = "${app.kafka.input-topic}",
+            containerFactory = "kafkaListenerContainerFactory",
+            groupId = "historical-fetcher-group")
     public void handleEvent(@Valid @Payload InputEvent event, Acknowledgment ack) {
 
         log.info(">> Получено событие. Обработка данных для ID: {}", event.event_id());
