@@ -38,18 +38,26 @@ class AirflowClient:
             logger=logger,
         )
 
-    def trigger_dag_run(self, *, event_id: str, trace_id: str, business_date: str) -> str:
+    def trigger_dag_run(
+        self, *, event_id: str, trace_id: str, business_date: str, dataset_type: str = "actual"
+    ) -> str:
         """Trigger a run of the dm_pipeline DAG for one (trace_id, business_date).
 
         dag_run_id is derived from event_id so a redelivered Kafka message
         (e.g. after a commit that didn't land) triggers Airflow's existing-run
         conflict instead of a duplicate run — the whole call is idempotent.
+        dataset_type ("actual"|"forecast") tells the DAG/Spark job which
+        Postgres source and ClickHouse target tables to use.
         """
         dag_run_id = f"clean-{event_id}"
         url = f"{self._base_url}/api/v1/dags/{self._dag_id}/dagRuns"
         body = {
             "dag_run_id": dag_run_id,
-            "conf": {"trace_id": trace_id, "business_date": business_date},
+            "conf": {
+                "trace_id": trace_id,
+                "business_date": business_date,
+                "dataset_type": dataset_type,
+            },
         }
 
         try:

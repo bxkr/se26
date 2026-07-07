@@ -85,3 +85,96 @@ SELECT * FROM weather.ods_daily_weather FINAL;
 
 CREATE VIEW IF NOT EXISTS weather.dm_fct_daily_weather_current AS
 SELECT * FROM weather.dm_fct_daily_weather FINAL;
+
+-- Прогнозная ветка: зеркало RAW/ODS/DM выше, источник — PostgreSQL-таблица
+-- weather_forecast (временный stand-in под predict_fetcher, см.
+-- infra/postgres/init.sql), заполняется той же PySpark-джобой с
+-- --dataset-type forecast (data/pipeline_flow.md, "Принятые решения").
+
+CREATE TABLE IF NOT EXISTS weather.raw_forecast_events
+(
+    source_name       String,
+    observation_date  Date32,
+    wmo_index         String,
+    station_name      String,
+    country           String,
+    min_temp          Nullable(Float64),
+    avg_temp          Nullable(Float64),
+    max_temp          Nullable(Float64),
+    precipitation     Nullable(Float64),
+    raw_bucket        String,
+    raw_object_key    String,
+    event_id          UUID,
+    trace_id          UUID,
+    event_created_at  DateTime,
+    ingested_at       DateTime
+)
+ENGINE = ReplacingMergeTree(ingested_at)
+PARTITION BY toYYYYMM(observation_date)
+ORDER BY (source_name, observation_date, wmo_index);
+
+CREATE TABLE IF NOT EXISTS weather.ods_daily_forecast
+(
+    wmo_index          String,
+    station_name       String,
+    country            String,
+    observation_date   Date32,
+    temperature        Nullable(Float64),
+    temp_min           Nullable(Float64),
+    temp_max           Nullable(Float64),
+    precipitation_mm   Nullable(Float64),
+    trace_id           UUID,
+    ingested_at        DateTime
+)
+ENGINE = ReplacingMergeTree(ingested_at)
+PARTITION BY toYYYYMM(observation_date)
+ORDER BY (wmo_index, observation_date);
+
+CREATE TABLE IF NOT EXISTS weather.dm_fct_daily_forecast
+(
+    wmo_index          String,
+    day                Date32,
+    temperature        Nullable(Float64),
+    temp_min           Nullable(Float64),
+    temp_max           Nullable(Float64),
+    precipitation_mm   Nullable(Float64),
+    trace_id           UUID,
+    ingested_at        DateTime
+)
+ENGINE = ReplacingMergeTree(ingested_at)
+PARTITION BY toYYYYMM(day)
+ORDER BY (wmo_index, day);
+
+CREATE VIEW IF NOT EXISTS weather.ods_daily_forecast_current AS
+SELECT * FROM weather.ods_daily_forecast FINAL;
+
+CREATE VIEW IF NOT EXISTS weather.dm_fct_daily_forecast_current AS
+SELECT * FROM weather.dm_fct_daily_forecast FINAL;
+
+-- DM: витрина ошибки прогноза, производная от dm_fct_daily_weather x
+-- dm_fct_daily_forecast (inner join по (wmo_index, day)), пересчитывается
+-- PySpark-джобой после каждой записи в любую из двух DM-таблиц. Знаковая
+-- ошибка = forecast - actual (положительная = перегрев/переоценка прогноза),
+-- плюс абсолютная ошибка для агрегатной точности (MAE-стиль).
+CREATE TABLE IF NOT EXISTS weather.dm_fct_forecast_error
+(
+    wmo_index               String,
+    day                     Date32,
+    temperature_error       Nullable(Float64),
+    temperature_abs_error   Nullable(Float64),
+    temp_min_error          Nullable(Float64),
+    temp_min_abs_error      Nullable(Float64),
+    temp_max_error          Nullable(Float64),
+    temp_max_abs_error      Nullable(Float64),
+    precipitation_mm_error       Nullable(Float64),
+    precipitation_mm_abs_error   Nullable(Float64),
+    actual_trace_id         UUID,
+    forecast_trace_id       UUID,
+    ingested_at             DateTime
+)
+ENGINE = ReplacingMergeTree(ingested_at)
+PARTITION BY toYYYYMM(day)
+ORDER BY (wmo_index, day);
+
+CREATE VIEW IF NOT EXISTS weather.dm_fct_forecast_error_current AS
+SELECT * FROM weather.dm_fct_forecast_error FINAL;

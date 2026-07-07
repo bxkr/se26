@@ -14,6 +14,10 @@
 
 Остальные поля — специфичны для `event_type`, см. соответствующий `events/*.example.json`.
 
+## `dataset_type`
+
+`weather.clean.created` и `weather.dm.ready` несут поле `dataset_type` (`"actual"` | `"forecast"`) — это не просто описательное поле, а дискриминатор источника/цели в `dm_trigger`/DAG `dm_pipeline`/Spark-джобе: `actual` читает `weather_actual` и пишет в `raw_weather_events`/`ods_daily_weather`/`dm_fct_daily_weather`, `forecast` — читает `weather_forecast` и пишет в `raw_forecast_events`/`ods_daily_forecast`/`dm_fct_daily_forecast`. После каждой DM-записи (в любой ветке) пересчитывается витрина `weather.dm_fct_forecast_error` (join `dm_fct_daily_weather`×`dm_fct_daily_forecast` по `(wmo_index, day)`). Отсутствие `dataset_type` в событии трактуется как `"actual"` (обратная совместимость).
+
 ## `weather.pipeline.failed`
 
 Единый контракт ошибки, публикуется любым шагом пайплайна на терминальный сбой (в т.ч. «источника нет данных за период» — не должно проглатываться тихим `ack`). Поля сверх конверта: `stage` (`fetch|etl|dm_trigger|dm`), `source_name` (сервис-источник), `reason` (короткий машиночитаемый код), `details` (человекочитаемое описание).

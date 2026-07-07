@@ -84,4 +84,70 @@ COMMENT ON COLUMN weather_actual.event_created_at IS
 COMMENT ON COLUMN weather_actual.ingested_at IS
 'Timestamp when row was inserted/updated in Postgres.';
 
+-- weather_forecast: temporary stand-in for the not-yet-built predict_fetcher
+-- service, mirrors weather_actual column-for-column. When predict_fetcher
+-- exists it should write here and publish weather.clean.created with
+-- dataset_type="forecast" (see data/pipeline_flow.md, "Принятые решения").
+CREATE TABLE IF NOT EXISTS weather_forecast (
+    source_name TEXT NOT NULL,
+    observation_date DATE NOT NULL,
+    wmo_index TEXT NOT NULL,
+    station_name TEXT NOT NULL,
+    country TEXT NOT NULL,
+    min_temp DOUBLE PRECISION NULL,
+    avg_temp DOUBLE PRECISION NULL,
+    max_temp DOUBLE PRECISION NULL,
+    precipitation DOUBLE PRECISION NULL,
+    raw_bucket TEXT NOT NULL,
+    raw_object_key TEXT NOT NULL,
+    event_id UUID NOT NULL,
+    trace_id UUID NOT NULL,
+    event_created_at TIMESTAMPTZ NOT NULL,
+    ingested_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT pk_weather_forecast
+        PRIMARY KEY (source_name, observation_date, wmo_index),
+
+    CONSTRAINT chk_weather_forecast_source_name_not_blank
+        CHECK (btrim(source_name) <> ''),
+
+    CONSTRAINT chk_weather_forecast_wmo_index_not_blank
+        CHECK (btrim(wmo_index) <> ''),
+
+    CONSTRAINT chk_weather_forecast_station_name_not_blank
+        CHECK (btrim(station_name) <> ''),
+
+    CONSTRAINT chk_weather_forecast_country_not_blank
+        CHECK (btrim(country) <> ''),
+
+    CONSTRAINT chk_weather_forecast_raw_bucket_not_blank
+        CHECK (btrim(raw_bucket) <> ''),
+
+    CONSTRAINT chk_weather_forecast_raw_object_key_not_blank
+        CHECK (btrim(raw_object_key) <> '')
+);
+
+CREATE INDEX IF NOT EXISTS idx_weather_forecast_observation_date
+    ON weather_forecast (observation_date);
+
+CREATE INDEX IF NOT EXISTS idx_weather_forecast_wmo_index
+    ON weather_forecast (wmo_index);
+
+CREATE INDEX IF NOT EXISTS idx_weather_forecast_event_id
+    ON weather_forecast (event_id);
+
+CREATE INDEX IF NOT EXISTS idx_weather_forecast_trace_id
+    ON weather_forecast (trace_id);
+
+CREATE INDEX IF NOT EXISTS idx_weather_forecast_raw_object_key
+    ON weather_forecast (raw_object_key);
+
+CREATE INDEX IF NOT EXISTS idx_weather_forecast_source_date
+    ON weather_forecast (source_name, observation_date);
+
+COMMENT ON TABLE weather_forecast IS
+'Temporary stand-in for predict_fetcher output. Same shape as weather_actual, '
+'but holds forecasted metrics for a future observation_date. Once '
+'predict_fetcher is built, it owns writing this table.';
+
 COMMIT;
