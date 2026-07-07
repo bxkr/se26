@@ -1,9 +1,7 @@
-version: "3.9"
-
 services:
   postgres:
     image: postgres:16
-    container_name: se26_postgres
+    container_name: se26-postgres
     environment:
       POSTGRES_DB: weather
       POSTGRES_USER: weather
@@ -12,28 +10,46 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/01_init.sql
-      - ./infra/postgres/seed.sql:/docker-entrypoint-initdb.d/02_seed.sql
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+      - ./infra/postgres/seed.sql:/docker-entrypoint-initdb.d/02_seed.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U weather -d weather"]
       interval: 5s
       timeout: 5s
-      retries: 10
+      retries: 20
 
-  redis:
-    image: redis:7
-    container_name: se26_redis
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    container_name: se26-kafka
     ports:
-      - "6379:6379"
+      - "9094:9094"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: "broker,controller"
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+
+      KAFKA_LISTENERS: "PLAINTEXT://kafka:9092,CONTROLLER://kafka:9093,PLAINTEXT_HOST://0.0.0.0:9094"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:9094"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT"
+      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+      KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
+
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+
+      CLUSTER_ID: "MkU3OEVBNTcwNTJENDM2Qk"
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
+      test: ["CMD-SHELL", "kafka-topics --bootstrap-server localhost:9092 --list >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
 
   minio:
     image: minio/minio:latest
-    container_name: se26_minio
+    container_name: se26-minio
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: minioadmin
@@ -43,152 +59,74 @@ services:
       - "9001:9001"
     volumes:
       - minio_data:/data
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:9000/minio/health/live || exit 1"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-
-  minio_init:
-    image: minio/mc:latest
-    container_name: se26_minio_init
-    depends_on:
-      minio:
-        condition: service_healthy
-    volumes:
-      - ./infra/s3/create_buckets.sh:/create_buckets.sh
-    entrypoint: ["/bin/sh", "/create_buckets.sh"]
-    restart: "no"
-
-  kafka:
-    image: confluentinc/cp-kafka:7.5.0
-    container_name: se26_kafka
-    ports:
-      - "9092:9092"
-      - "29092:29092"
-    environment:
-      CLUSTER_ID: "MkU3OEVBNTcwNTJENDM2Qk"
-      KAFKA_NODE_ID: 1
-      KAFKA_PROCESS_ROLES: "broker,controller"
-      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
-      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
-
-      KAFKA_LISTENERS: "PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,PLAINTEXT_HOST://0.0.0.0:29092"
-      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092"
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT"
-      KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
-
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
-      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
-      KAFKA_NUM_PARTITIONS: 1
-    volumes:
-      - kafka_data:/var/lib/kafka/data
-    healthcheck:
-      test: ["CMD-SHELL", "kafka-topics --bootstrap-server localhost:9092 --list >/dev/null 2>&1 || exit 1"]
-      interval: 10s
-      timeout: 10s
-      retries: 10
-
-  kafka_init:
-    image: confluentinc/cp-kafka:7.5.0
-    container_name: se26_kafka_init
-    depends_on:
-      kafka:
-        condition: service_healthy
-    volumes:
-      - ./infra/kafka/create_topics.sh:/create_topics.sh
-    entrypoint: ["/bin/sh", "/create_topics.sh"]
-    restart: "no"
-
-  clickhouse:
-    image: clickhouse/clickhouse-server:24.3
-    container_name: se26_clickhouse
-    ports:
-      - "8123:8123"
-      - "9002:9000"
-    volumes:
-      - clickhouse_data:/var/lib/clickhouse
-      - ./infra/clickhouse/init.sql:/docker-entrypoint-initdb.d/init.sql
-    healthcheck:
-      test: ["CMD-SHELL", "clickhouse-client --query 'SELECT 1' || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-
-  analytics_api:
-    build:
-      context: ./microservices/analytics_api
-    container_name: se26_analytics_api
-    depends_on:
-      postgres:
-        condition: service_healthy
-      clickhouse:
-        condition: service_healthy
-      kafka:
-        condition: service_healthy
-    environment:
-      SERVICE_NAME: analytics_api
-    ports:
-      - "8000:8000"
 
   etl_service:
     build:
       context: ./microservices/etl_service
-    container_name: se26_etl_service
+      dockerfile: Dockerfile
+    container_name: se26-etl-service
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
-        condition: service_healthy
-      minio:
-        condition: service_healthy
       kafka:
         condition: service_healthy
-    environment:
-      SERVICE_NAME: etl_service
-
-  front_api:
-    build:
-      context: ./microservices/front_api
-    container_name: se26_front_api
-    depends_on:
-      redis:
-        condition: service_healthy
-      analytics_api:
+      minio:
         condition: service_started
     environment:
-      SERVICE_NAME: front_api
-    ports:
-      - "8080:8080"
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: weather
+      POSTGRES_USER: weather
+      POSTGRES_PASSWORD: weather
 
-  historical_fetcher:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_TOPIC: weather.actual.raw.created
+      KAFKA_GROUP_ID: etl-service
+      KAFKA_AUTO_OFFSET_RESET: earliest
+
+      S3_ENDPOINT_URL: http://minio:9000
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      AWS_DEFAULT_REGION: us-east-1
+    restart: unless-stopped
+
+  test_producer:
     build:
-      context: ./microservices/historical_fetcher
-    container_name: se26_historical_fetcher
+      context: ./tools/test_producer
+      dockerfile: Dockerfile
+    container_name: se26-test-producer
     depends_on:
+      postgres:
+        condition: service_healthy
       kafka:
         condition: service_healthy
       minio:
-        condition: service_healthy
+        condition: service_started
+      etl_service:
+        condition: service_started
     environment:
-      SERVICE_NAME: historical_fetcher
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_TOPIC: weather.actual.raw.created
 
-  predict_fetcher:
-    build:
-      context: ./microservices/predict_fetcher
-    container_name: se26_predict_fetcher
-    depends_on:
-      kafka:
-        condition: service_healthy
-      minio:
-        condition: service_healthy
-    environment:
-      SERVICE_NAME: predict_fetcher
+      S3_ENDPOINT_URL: http://minio:9000
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      AWS_DEFAULT_REGION: us-east-1
+      RAW_BUCKET: weather-raw
+
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: weather
+      POSTGRES_USER: weather
+      POSTGRES_PASSWORD: weather
+
+      TEST_SOURCE_NAME: historical_fetcher
+      TEST_SCHEMA_VERSION: "1"
+      EXPECTED_ROW_COUNT: "6"
+    profiles:
+      - test
+    restart: "no"
 
 volumes:
   postgres_data:
   minio_data:
-  kafka_data:
-  clickhouse_data:

@@ -4,9 +4,13 @@
   "event_type": "weather.actual.raw.created",
   "source_name": "historical_fetcher",
   "bucket": "weather-raw",
-  "object_key": "actual/date=1960-01-01/3c7d3b2f-4f88-4eaf-9f6b-11fa7d91d601.json",
-  "observation_date": "1960-01-01",
-  "station_count": 2,
+  "object_keys": [
+    "actual/date=1960-01-01.json",
+    "actual/date=1960-01-02.json",
+    "actual/date=1960-01-03.json"
+  ],
+  "date_from": "1960-01-01",
+  "date_to": "1960-01-03",
   "schema_version": 1,
   "created_at": "2026-07-06T12:10:00Z"
 }

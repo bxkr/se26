@@ -1,12 +1,47 @@
-#!/bin/sh
-set -e
+#!/usr/bin/env bash
+set -euo pipefail
 
-echo "Creating Kafka topics..."
+BOOTSTRAP_SERVER="${KAFKA_BOOTSTRAP_SERVER:-kafka:9092}"
 
-kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic need_info --partitions 1 --replication-factor 1
-kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic new_raw_historical --partitions 2 --replication-factor 1
-kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic new_raw_predict --partitions 2 --replication-factor 1
-kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic new_clean --partitions 1 --replication-factor 1
+# Для текущего historical flow обязателен weather.actual.raw.created.
+# Остальные темы оставляем как совместимые с текущими contracts.
+TOPICS=(
+  "weather.actual.raw.created:3:1:604800000"
+  "weather.clean.created:3:1:604800000"
+  "weather.need_info:3:1:604800000"
+)
 
-echo "Kafka topics created"
-kafka-topics --bootstrap-server kafka:29092 --list
+echo "Waiting for Kafka at ${BOOTSTRAP_SERVER}..."
+until kafka-topics --bootstrap-server "${BOOTSTRAP_SERVER}" --list >/dev/null 2>&1; do
+  sleep 2
+done
+
+echo "Kafka is available. Creating topics..."
+
+for spec in "${TOPICS[@]}"; do
+  IFS=":" read -r topic partitions replication retention_ms <<< "${spec}"
+
+  kafka-topics \
+    --bootstrap-server "${BOOTSTRAP_SERVER}" \
+    --create \
+    --if-not-exists \
+    --topic "${topic}" \
+    --partitions "${partitions}" \
+    --replication-factor "${replication}" \
+    --config retention.ms="${retention_ms}"
+
+  echo "Ensured topic exists: ${topic}"
+done
+
+echo
+echo "Kafka topics description:"
+for spec in "${TOPICS[@]}"; do
+  IFS=":" read -r topic partitions replication retention_ms <<< "${spec}"
+  kafka-topics \
+    --bootstrap-server "${BOOTSTRAP_SERVER}" \
+    --describe \
+    --topic "${topic}"
+done
+
+echo
+echo "Kafka topics are ready."
