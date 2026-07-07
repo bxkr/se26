@@ -1,0 +1,6 @@
+apiVersion: v2
+name: airflow
+description: Single-pod Airflow standalone (LocalExecutor) + Spark local-mode DAG runner (lean profile)
+type: application
+version: 0.1.0
+appVersion: "2.9.3"

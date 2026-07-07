@@ -1,0 +1,29 @@
+# Install as: helm upgrade --install clickhouse . -n dm-pipeline
+# dm_pipeline addresses this service as CLICKHOUSE_HOST=clickhouse.
+
+image:
+  repository: clickhouse/clickhouse-server
+  tag: "24.8"
+  pullPolicy: IfNotPresent
+
+nameOverride: ""
+fullnameOverride: ""
+
+# Password for the built-in "default" user — must match
+# deploy/helm/airflow/values.yaml's clickhouse.password (dm_pipeline's
+# Spark job connects as this user). The image blocks password-less HTTP/JDBC
+# access unless a password is explicitly configured.
+auth:
+  password: "weather"
+
+persistence:
+  size: 5Gi
+  storageClassName: ""
+
+resources:
+  requests:
+    cpu: 300m
+    memory: 768Mi
+  limits:
+    cpu: 500m
+    memory: 1536Mi

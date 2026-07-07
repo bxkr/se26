@@ -1,0 +1,6 @@
+apiVersion: v2
+name: dm-trigger
+description: Consumes weather.clean.created and triggers the dm_pipeline Airflow DAG
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
