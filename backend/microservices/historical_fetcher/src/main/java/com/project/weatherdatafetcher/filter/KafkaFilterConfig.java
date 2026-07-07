@@ -12,18 +12,19 @@ import org.springframework.kafka.listener.adapter.RecordFilterStrategy;
 public class KafkaFilterConfig {
 
     @Bean
-    public RecordFilterStrategy<String, InputEvent> datasetTypeFilter() {
-        return new RecordFilterStrategy<String, InputEvent>() {
-            @Override
-            public boolean filter(@NonNull ConsumerRecord<String, InputEvent> consumerRecord) {
-                InputEvent event = consumerRecord.value();
+    public RecordFilterStrategy<Object, Object> datasetTypeFilter() {
+        return consumerRecord -> {
+            Object value = consumerRecord.value();
 
-                if (event == null || event.datasetType() == null) {
+
+            if (value instanceof InputEvent event) {
+                if (event.datasetType() == null) {
                     return true;
                 }
-
                 return !event.datasetType().equals("weather-raw");
             }
+
+            return true;
         };
     }
 }
