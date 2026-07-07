@@ -11,7 +11,7 @@ public record InputEvent(
         @NotBlank(message = "eventId не должен быть пустым")
         String event_id,
         @NotNull(message = "date_from обязателен")
-        LocalDate startDate,
+        LocalDate start_date,
         @NotNull(message = "date_to обязателен")
         LocalDate end_date,
         String trace_id,

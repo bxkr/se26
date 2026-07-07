@@ -68,14 +68,14 @@ public class EventProcessor {
             ack.acknowledge();
             return;
         }
-        if(event.startDate().isAfter(event.end_date())){
+        if(event.start_date().isAfter(event.end_date())){
             log.info("Получены невалидные даты.");
             ack.acknowledge();
             return;
         }
         try {
 
-            List<LocalDate> dates = event.startDate()
+            List<LocalDate> dates = event.start_date()
                     .datesUntil(event.end_date().plusDays(1))
                     .toList();
 
@@ -153,7 +153,7 @@ public class EventProcessor {
             OutputReceipt receipt = new OutputReceipt(
                     java.util.UUID.randomUUID().toString(), event.trace_id(),
                     "weather.actual.raw.created", "historical_fetcher", bucketName,
-                    new ArrayList<>(s3Keys), event.startDate().toString(),
+                    new ArrayList<>(s3Keys), event.start_date().toString(),
                     event.end_date().toString(), event.schema_version(), LocalDateTime.now()
             );
 
