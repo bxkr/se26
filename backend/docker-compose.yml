@@ -106,7 +106,6 @@ services:
 
       REQUEST_SOURCE_NAME: test_producer
       EXPECTED_RAW_SOURCE_NAME: historical_fetcher
-      TEST_SCHEMA_VERSION: "1"
       EXPECTED_ROW_COUNT: "6"
       EXPECTED_OBJECT_KEYS_COUNT: "3"
 

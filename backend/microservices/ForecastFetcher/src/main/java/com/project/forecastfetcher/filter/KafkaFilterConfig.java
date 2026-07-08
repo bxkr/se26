@@ -1,7 +1,7 @@
-package com.project.weatherdatafetcher.filter;
+package com.project.forecastfetcher.filter;
 
 
-import com.project.weatherdatafetcher.dto.InputEvent;
+import com.project.forecastfetcher.dto.InputEvent;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -20,7 +20,7 @@ public class KafkaFilterConfig {
                 if (event.dataset_type() == null) {
                     return true;
                 }
-                return !event.dataset_type().equals("actual");
+                return !event.dataset_type().equals("forecast");
             }
 
             return true;
