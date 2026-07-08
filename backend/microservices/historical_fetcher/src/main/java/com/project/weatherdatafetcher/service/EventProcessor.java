@@ -75,14 +75,20 @@ public class EventProcessor {
             ack.acknowledge();
             return;
         }
-
+        if((event.date_from() == null) || (event.date_to() == null)){
+            log.info("Получены невалидные даты.");
+            ack.acknowledge();
+            return;
+        }
         LocalDate dt_date_from = LocalDate.parse(event.date_from());
         LocalDate dt_date_to = LocalDate.parse(event.date_to());
+
         if(dt_date_from.isAfter(dt_date_to)){
             log.info("Получены невалидные даты.");
             ack.acknowledge();
             return;
         }
+
         try {
 
             List<LocalDate> dates = dt_date_from
