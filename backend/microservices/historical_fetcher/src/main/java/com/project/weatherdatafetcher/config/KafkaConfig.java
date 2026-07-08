@@ -74,6 +74,7 @@ public class KafkaConfig {
                 new ConcurrentKafkaListenerContainerFactory<>();
 
         factory.setConsumerFactory(consumerFactory);
+        factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.MANUAL_IMMEDIATE);
 
         factory.setRecordFilterStrategy(datasetTypeFilter);
 
