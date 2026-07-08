@@ -259,8 +259,89 @@ def send_need_info_event(event: dict[str, Any]) -> None:
         producer.close()
 
 
+def wait_for_raw_created_event(
+    *, consumer: KafkaConsumer, request_event: dict[str, Any], timeout_seconds: int
+) -> dict[str, Any]:
+    """Poll RAW_CREATED_TOPIC until historical_fetcher's receipt for our
+    trace_id shows up, or time out. historical_fetcher passes trace_id
+    through from InputEvent to OutputReceipt unchanged, so it's the
+    correlation key between what we sent and what we get back."""
+    expected_trace_id = request_event["trace_id"]
+    deadline = time.time() + timeout_seconds
+
+    while time.time() < deadline:
+        for message in consumer.poll(timeout_ms=1000).values():
+            for record in message:
+                event = record.value
+                if event.get("trace_id") == expected_trace_id:
+                    log(
+                        "matching raw.created event received",
+                        event_id=event.get("event_id"),
+                        trace_id=event.get("trace_id"),
+                        object_keys=event.get("object_keys"),
+                    )
+                    return event
+
+    raise TimeoutError(
+        f"timed out waiting for {RAW_CREATED_TOPIC} with trace_id={expected_trace_id} "
+        f"(historical_fetcher didn't respond in {timeout_seconds}s)"
+    )
+
+
+def verify_raw_created_event(event: dict[str, Any]) -> None:
+    errors = []
+
+    if event.get("event_type") != "weather.actual.raw.created":
+        errors.append(f"event_type={event.get('event_type')!r}, expected weather.actual.raw.created")
+    if event.get("source_name") != EXPECTED_RAW_SOURCE_NAME:
+        errors.append(f"source_name={event.get('source_name')!r}, expected {EXPECTED_RAW_SOURCE_NAME!r}")
+    if event.get("bucket") != RAW_BUCKET:
+        errors.append(f"bucket={event.get('bucket')!r}, expected {RAW_BUCKET!r}")
+
+    object_keys = event.get("object_keys") or []
+    if len(object_keys) != EXPECTED_OBJECT_KEYS_COUNT:
+        errors.append(
+            f"object_keys count={len(object_keys)}, expected {EXPECTED_OBJECT_KEYS_COUNT} "
+            f"(date range {REQUEST_DATE_FROM}..{REQUEST_DATE_TO}): {object_keys}"
+        )
+
+    if errors:
+        raise AssertionError("raw.created event failed verification: " + "; ".join(errors))
+
+    log("raw.created event shape verified", object_keys=object_keys)
+
+
+def verify_s3_objects(s3, object_keys: list[str], requested_stations: list[str]) -> None:
+    """Fetch every object historical_fetcher claims to have written and check
+    it actually exists in S3, is valid JSON, and only contains the stations
+    we asked for (the API returns many more stations than we requested;
+    EventProcessor filters down to targetWmoIndexes)."""
+    total_rows = 0
+
+    for object_key in object_keys:
+        body = s3.get_object(Bucket=RAW_BUCKET, Key=object_key)["Body"].read()
+        payload = json.loads(body)
+
+        stations = payload.get("stations") or []
+        found_wmo_indexes = {str(station.get("wmo_index")) for station in stations}
+        unexpected = found_wmo_indexes - set(requested_stations)
+        if unexpected:
+            raise AssertionError(f"{object_key}: unexpected stations not in request: {unexpected}")
+
+        total_rows += len(stations)
+        log("verified s3 object", object_key=object_key, station_count=len(stations))
+
+    if total_rows != EXPECTED_ROW_COUNT:
+        raise AssertionError(
+            f"total station rows across {len(object_keys)} object(s) = {total_rows}, "
+            f"expected {EXPECTED_ROW_COUNT}"
+        )
+
+    log("s3 objects verified", total_rows=total_rows)
+
+
 def main() -> None:
-    log("historical fetcher e2e orchestrator started")
+    log("historical_fetcher infrastructure test started")
 
     s3 = wait_for_s3()
     ensure_bucket(s3)
@@ -274,27 +355,18 @@ def main() -> None:
     send_need_info_event(request_event)
 
     try:
-        log(1)
         raw_event = wait_for_raw_created_event(
             consumer=raw_consumer,
             request_event=request_event,
             timeout_seconds=WAIT_TIMEOUT_SECONDS,
         )
-        log(2)
     finally:
         raw_consumer.close()
 
-    send_event(event)
+    verify_raw_created_event(raw_event)
+    verify_s3_objects(s3, raw_event["object_keys"], request_event["wmo_indexes"])
 
-    # dm_trigger/Airflow/Spark/ClickHouse only run in k8s, not in this local
-    # docker-compose — this tool can only exercise the S3+Kafka upload half
-    # locally. Verify the rest manually against the cluster: dm_trigger logs
-    # for a triggered DagRun, then ClickHouse dm_fct_daily_weather_current
-    # for the resulting rows (see data/dm_pipeline_integration.md).
-    log(
-        "raw JSON uploaded and event published; verify downstream manually against the cluster",
-        event_id=event["event_id"],
-    )
+    log("historical_fetcher infrastructure test PASSED")
 
 
 if __name__ == "__main__":

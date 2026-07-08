@@ -28,6 +28,7 @@ import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -44,7 +45,11 @@ public class EventProcessor {
     private final KafkaTemplate<String, Object> kafkaTemplate;
     private WebClient webClient = WebClient.create();
     private final Validator validator;
-    private ObjectMapper objectMapper = new ObjectMapper();
+    // No autoconfigured ObjectMapper bean exists in this app's context (no
+    // spring-boot-starter-json trigger present) — build our own and
+    // explicitly register JavaTimeModule, needed to serialize
+    // ApiResponse.date (a LocalDate) when writing the raw JSON to S3.
+    private final ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
 
     public EventProcessor(
         S3Client s3Client,

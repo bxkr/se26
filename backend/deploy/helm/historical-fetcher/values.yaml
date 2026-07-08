@@ -1,0 +1,31 @@
+# Install as: helm upgrade --install historical-fetcher . -n dm-pipeline
+# Image is built from backend/microservices/historical_fetcher/Dockerfile.
+
+image:
+  repository: cr.yandex/crpmc4ksa9bqvd59g3dm/dm-pipeline/historical-fetcher-image
+  tag: "latest"
+  pullPolicy: Always
+
+nameOverride: ""
+fullnameOverride: ""
+
+kafka:
+  bootstrapServers: "kafka:9092"
+
+# S3_ENDPOINT_URL/RAW_BUCKET/AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY come from
+# this Secret, created directly by Terraform (yandex-cloud-sample/terraform/
+# stage-1/object_storage.tf) — same Secret the airflow chart already
+# consumes, see deploy/helm/airflow/values.yaml.
+s3:
+  secretName: "weather-raw-s3"
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 512Mi
+  limits:
+    cpu: 500m
+    # JAVA_OPTS in the Dockerfile pins the JVM heap to -Xmx512m; leave
+    # headroom above that for JVM overhead (metaspace, threads, direct
+    # buffers) or it OOMKills despite the heap limit looking fine.
+    memory: 1Gi

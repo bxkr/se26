@@ -1,0 +1,6 @@
+apiVersion: v2
+name: historical-fetcher
+description: Consumes weather.need_info, fetches historical daily weather, writes raw JSON to S3, publishes weather.actual.raw.created
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

@@ -65,6 +65,20 @@ services:
     volumes:
       - minio_data:/data
 
+  historical_fetcher:
+    build:
+      context: ./microservices/historical_fetcher
+      dockerfile: Dockerfile
+    container_name: se26-historical-fetcher
+    depends_on:
+      kafka:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    ports:
+      - "5050:5050"
+    restart: unless-stopped
+
   test_producer:
     build:
       context: ./tools/test_producer
@@ -74,6 +88,8 @@ services:
       kafka:
         condition: service_started
       minio:
+        condition: service_started
+      historical_fetcher:
         condition: service_started
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
@@ -87,12 +103,6 @@ services:
       RAW_BUCKET: weather-raw
 
       TEST_SOURCE_NAME: historical_fetcher
-      TEST_SCHEMA_VERSION: "1"
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
-      POSTGRES_DB: weather
-      POSTGRES_USER: weather
-      POSTGRES_PASSWORD: weather
 
       REQUEST_SOURCE_NAME: test_producer
       EXPECTED_RAW_SOURCE_NAME: historical_fetcher
