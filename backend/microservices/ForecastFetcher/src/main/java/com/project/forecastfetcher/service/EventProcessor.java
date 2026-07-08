@@ -178,7 +178,7 @@ public class EventProcessor {
 
             OutputReceipt receipt = new OutputReceipt(
                     UUID.randomUUID().toString(), event.trace_id(),
-                    "weather.actual.raw.created", "historical_fetcher", bucketName,
+                    "weather.forecast.raw.created", "predict_fetcher", bucketName,
                     new ArrayList<>(s3Keys), event.date_from(),
                     event.date_to(), event.schema_version(), LocalDateTime.now().toString()
             );

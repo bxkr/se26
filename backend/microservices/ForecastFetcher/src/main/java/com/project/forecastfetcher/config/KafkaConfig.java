@@ -55,7 +55,7 @@ public class KafkaConfig {
 
         props.put(
             JacksonJsonDeserializer.VALUE_DEFAULT_TYPE,
-            "com.project.weatherdatafetcher.dto.InputEvent"
+            "com.project.forecastfetcher.dto.InputEvent"
         );
 
         props.put(

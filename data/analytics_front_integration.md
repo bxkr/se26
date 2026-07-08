@@ -52,9 +52,9 @@ kubectl port-forward -n dm-pipeline svc/analytics-api 8010:8000
 3. `analytics_api` слушает `weather.dm.ready`/`weather.pipeline.failed` и переводит `request_id` в `ready`/`failed`, когда дождался ответа по всем опубликованным событиям.
 4. Состояние запроса и дедуп-локи (чтобы конкурентные одинаковые запросы не дублировали `weather.need_info`) хранятся в Redis — том же инстансе, что и `front_api` (см. п.5).
 
-**Важное ограничение прямо сейчас:** `predict_fetcher` (поставщик прогнозов) ещё не существует. Любой `202`-запрос, где не хватает **прогнозных** данных, зависнет в `pending` и через `ANALYTICS_REQUEST_TIMEOUT_SECONDS` (по умолчанию 600с/10 минут) перейдёт в `failed` с понятным `error_message` про отсутствие `predict_fetcher` — это ожидаемое поведение, не баг. Actual-сторона (историческая погода) дозапрашивается и приходит по-настоящему, `historical_fetcher` уже в проде и обрабатывает такие события.
+`predict_fetcher` (в репозитории — `ForecastFetcher`) задеплоен и обрабатывает `weather.need_info{dataset_type:"forecast"}` по-настоящему: резолвит координаты станции через `regions-api`, тянет прогноз из Open-Meteo Historical Forecast API, пишет `forecast/date=...json` в S3 и публикует `weather.forecast.raw.created`. Обе стороны (`actual` и `forecast`) теперь реально дозапрашиваются и приходят — `202`-запрос доходит до `ready`, а не висит до таймаута. Проверено end-to-end (`weather.need_info` → S3 → `dm_trigger` → Airflow DAG → Spark → ClickHouse → `weather.dm.ready`).
 
-`front_api` стоит закладывать таймаут ожидания на своей стороне не короче `ANALYTICS_REQUEST_TIMEOUT_SECONDS` — раньше `analytics_api` сам не даст окончательный ответ.
+`front_api` всё равно стоит закладывать таймаут ожидания на своей стороне не короче `ANALYTICS_REQUEST_TIMEOUT_SECONDS` (по умолчанию 600с/10 минут) — это по-прежнему рабочий сценарий: сбой внешнего API прогнозов, отсутствие координат станции в `regions-api`, сетевые проблемы и т.п. приведут к тому же `pending` → `failed` по таймауту, просто это больше не гарантированный исход для любого forecast-запроса.
 
 ## 4. Формат ошибок
 
@@ -133,7 +133,7 @@ async def get_station_errors(client: httpx.AsyncClient, station: str, date_from:
 
 ## 8. Известные ограничения (осознанно, не баги)
 
-- Прогнозная сторона (`dataset_type: "forecast"`) не может по-настоящему довозвращаться, пока не построен `predict_fetcher` — любой запрос, задевающий отсутствующие прогнозные дни, гарантированно упрётся в таймаут. Actual-сторона работает по-настоящему.
+- Обе стороны (`actual` через `historical_fetcher`, `forecast` через `predict_fetcher`/`ForecastFetcher`) дозапрашиваются по-настоящему и доходят до `ready`. Таймаут по-прежнему возможен как исход сбоя (внешний API недоступен, нет координат станции и т.п.), но не как гарантированное поведение для forecast-стороны.
 - `/errors/top` и `/metrics/model` никогда не запускают дозапрос — если нужных данных нет вообще ни по одной станции, они просто вернут пустой/нулевой результат синхронно, а не `202`.
 - Дедуп через Redis-лок — по первому дню диапазона, не по всему диапазону целиком (упрощение, безопасное за счёт идемпотентности `historical_fetcher` при повторном дозапросе того же диапазона).
 - Нет `.sourcecraft/ci.yaml` — сборка/деплой вручную (`docker buildx build --platform linux/amd64 ... --push` + `helm upgrade --install`), как и у остальных сервисов в этом пайплайне.
