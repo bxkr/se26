@@ -19,7 +19,7 @@ public class KafkaFilterConfig {
     private static final LogAccessor logger = new LogAccessor(LogFactory.getLog(KafkaFilterConfig.class));
 
     @Bean
-    public RecordFilterStrategy<String, Object> datasetTypeFilter() {
+    public RecordFilterStrategy<Object, Object> datasetTypeFilter() {
         return consumerRecord -> {
 
             System.out.println("Event is being filtered");

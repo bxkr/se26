@@ -40,14 +40,23 @@ import java.util.stream.Collectors;
 
 @Service
 @Slf4j
-@RequiredArgsConstructor
 public class EventProcessor {
 
     private final S3Client s3Client;
     private final KafkaTemplate<String, Object> kafkaTemplate;
     private WebClient webClient = WebClient.create();
     private final Validator validator;
-    private final ObjectMapper objectMapper;
+    private ObjectMapper objectMapper = new ObjectMapper();
+
+    public EventProcessor(
+            S3Client s3Client,
+            KafkaTemplate<String, Object> kafkaTemplate,
+            Validator validator
+    ) {
+        this.s3Client = s3Client;
+        this.kafkaTemplate = kafkaTemplate;
+        this.validator = validator;
+    }
 
     @Value("${app.external-api-url}")
     private String externalApiUrl;
@@ -58,9 +67,7 @@ public class EventProcessor {
     @Value("${app.kafka.output-topic}")
     private String outputTopic;
 
-    @KafkaListener(topics = "${app.kafka.input-topic}",
-            containerFactory = "kafkaListenerContainerFactory",
-            groupId = "historical-fetcher-group")
+    @KafkaListener(topics = "${app.kafka.input-topic}", groupId = "s3-uploader-historical-group")
     public void handleEvent(@Valid @Payload InputEvent event, Acknowledgment ack) {
 
         log.info(">> Получено событие. Обработка данных для ID: {}", event.event_id());
@@ -70,15 +77,18 @@ public class EventProcessor {
             ack.acknowledge();
             return;
         }
-        if(event.start_date().isAfter(event.end_date())){
+
+        LocalDate dt_date_from = LocalDate.parse(event.date_from());
+        LocalDate dt_date_to = LocalDate.parse(event.date_to());
+        if(dt_date_from.isAfter(dt_date_to)){
             log.info("Получены невалидные даты.");
             ack.acknowledge();
             return;
         }
         try {
 
-            List<LocalDate> dates = event.start_date()
-                    .datesUntil(event.end_date().plusDays(1))
+            List<LocalDate> dates = dt_date_from
+                    .datesUntil(dt_date_to.plusDays(1))
                     .toList();
 
             ConcurrentLinkedQueue<String> s3Keys = new ConcurrentLinkedQueue<>();
@@ -155,8 +165,8 @@ public class EventProcessor {
             OutputReceipt receipt = new OutputReceipt(
                     java.util.UUID.randomUUID().toString(), event.trace_id(),
                     "weather.actual.raw.created", "historical_fetcher", bucketName,
-                    new ArrayList<>(s3Keys), event.start_date().toString(),
-                    event.end_date().toString(), event.schema_version(), LocalDateTime.now()
+                    new ArrayList<>(s3Keys), event.date_from(),
+                    event.date_to(), event.schema_version(), LocalDateTime.now().toString()
             );
 
             kafkaTemplate.send(outputTopic, event.event_id(), receipt).get(10, java.util.concurrent.TimeUnit.SECONDS);
