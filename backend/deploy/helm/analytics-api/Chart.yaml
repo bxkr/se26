@@ -1,0 +1,6 @@
+apiVersion: v2
+name: analytics-api
+description: Client-facing forecast-error API (data/analytics_front_contract.md) over ClickHouse + Kafka + Redis
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

@@ -1,0 +1,40 @@
+# Install as: helm upgrade --install analytics-api . -n dm-pipeline
+# Image is built from backend/microservices/analytics_api/Dockerfile.
+
+image:
+  repository: cr.yandex/crpmc4ksa9bqvd59g3dm/dm-pipeline/analytics-api-image
+  tag: "latest"
+  pullPolicy: Always
+
+nameOverride: ""
+fullnameOverride: ""
+
+kafka:
+  bootstrapServers: "kafka:9092"
+  topics: "weather.dm.ready,weather.pipeline.failed"
+  groupId: "analytics-api"
+
+clickhouse:
+  host: clickhouse
+  httpPort: "8123"
+  db: weather
+  user: default
+  # Must match deploy/helm/clickhouse/values.yaml's auth.password.
+  password: "weather"
+
+redis:
+  host: "redis"
+  port: "6379"
+
+regionsApi:
+  url: "http://regions-api:8000"
+
+requestTimeoutSeconds: 600
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi

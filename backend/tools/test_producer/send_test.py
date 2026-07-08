@@ -88,7 +88,7 @@ def build_need_info_event() -> dict[str, Any]:
             "wmo_indexes": load_request_stations(),
             "schema_version": TEST_SCHEMA_VERSION,
             "created_at": created_at,
-            "dataset_type": "weather-raw"
+            "dataset_type": "actual"
         }
 
     payload.setdefault("event_id", event_id)
