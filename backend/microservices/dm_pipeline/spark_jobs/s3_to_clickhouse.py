@@ -1,23 +1,22 @@
-"""PySpark job: PostgreSQL(weather_actual|weather_forecast) -> ClickHouse (RAW/ODS/DM).
+"""PySpark job: S3 raw daily JSON -> ClickHouse (RAW/ODS/DM).
 
-Реализует семантику infra/clickhouse/pipeline/{01,02,03}*.sql (эталон
-RAW->ODS->DM из лабы sem8, Postgres-диалект, читает несуществующие
-stations/weather_data) поверх реальной схемы infra/clickhouse/schema.sql.
---dataset-type выбирает источник и целевые таблицы: "actual" читает
-weather_actual (пишет etl_service) и пишет в *_weather* таблицы, "forecast"
-читает weather_forecast (временный stand-in под predict_fetcher, см.
-infra/postgres/init.sql) и пишет в *_forecast* таблицы. Подробности:
-data/pipeline_flow.md, "Принятые решения", п.3 и п.5.
+Reads a single daily raw file (`s3a://<bucket>/<object_key>`, one JSON
+document `{date, stations: [...]}`) directly via the S3A connector — no
+Postgres involved anymore (see data/pipeline_flow.md, "Принятые решения").
+--dataset-type selects the target ClickHouse tables: "actual" writes
+*_weather* tables (source: historical_fetcher via weather.actual.raw.created),
+"forecast" writes *_forecast* tables (source: predict_fetcher, still
+unbuilt, via weather.forecast.raw.created).
 
-После записи DM-слоя (в обеих ветках) пересчитывается витрина
-dm_fct_forecast_error — inner join dm_fct_daily_weather x dm_fct_daily_forecast
-по (wmo_index, day) для этого business_date, знаковая и абсолютная ошибка на
-каждую метрику. Если второй стороны ещё нет — join пуст, ничего не пишется;
-витрина дозаполнится, когда придёт вторая сторона (порядок actual/forecast
-не важен).
+After writing the DM layer (in either branch) the dm_fct_forecast_error mart
+is recomputed — inner join dm_fct_daily_weather x dm_fct_daily_forecast on
+(wmo_index, day) for this business_date, signed and absolute error per
+metric. If the other side doesn't exist yet the join is empty and nothing is
+written; the mart backfills whenever the second side arrives (order of
+actual/forecast doesn't matter).
 
-Запускается Airflow DAG'ом dm_pipeline_dag.py через spark-submit
---master local[*] (без отдельного Spark-кластера, lean-профиль).
+Run by dm_pipeline_dag.py via spark-submit --master local[2] (no separate
+Spark cluster, lean profile, one pod alongside Airflow standalone).
 """
 
 from __future__ import annotations
@@ -25,19 +24,18 @@ from __future__ import annotations
 import argparse
 import json
 import os
+from datetime import datetime
 
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
 TABLE_CONFIG = {
     "actual": {
-        "source_table": "weather_actual",
         "raw_table": "raw_weather_events",
         "ods_table": "ods_daily_weather",
         "dm_table": "dm_fct_daily_weather",
     },
     "forecast": {
-        "source_table": "weather_forecast",
         "raw_table": "raw_forecast_events",
         "ods_table": "ods_daily_forecast",
         "dm_table": "dm_fct_daily_forecast",
@@ -54,15 +52,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--dataset-type", required=True, choices=sorted(TABLE_CONFIG), help="actual|forecast"
     )
+    parser.add_argument("--bucket", required=True, help="S3 bucket holding the raw daily JSON file")
+    parser.add_argument("--object-key", required=True, help="e.g. actual/date=1960-01-01.json")
+    parser.add_argument("--source-name", required=True, help="producer of the raw file, e.g. historical_fetcher")
+    parser.add_argument("--event-id", required=True, help="raw.created event_id (already made unique per date)")
+    parser.add_argument("--event-created-at", required=True, help="ISO8601 created_at from the raw.created event")
     parser.add_argument("--result-path", required=True, help="where to write {record_count, business_date} JSON")
     return parser.parse_args()
-
-
-def postgres_jdbc_url() -> str:
-    host = os.environ["POSTGRES_HOST"]
-    port = os.environ.get("POSTGRES_PORT", "5432")
-    db = os.environ["POSTGRES_DB"]
-    return f"jdbc:postgresql://{host}:{port}/{db}"
 
 
 def clickhouse_jdbc_url() -> str:
@@ -123,41 +119,74 @@ def main() -> None:
 
     spark = (
         SparkSession.builder.appName(f"dm_pipeline-{args.trace_id}")
-        .master("local[*]")
+        .master("local[2]")
+        .config("spark.hadoop.fs.s3a.endpoint", os.environ["S3_ENDPOINT_URL"])
+        .config("spark.hadoop.fs.s3a.access.key", os.environ["AWS_ACCESS_KEY_ID"])
+        .config("spark.hadoop.fs.s3a.secret.key", os.environ["AWS_SECRET_ACCESS_KEY"])
+        .config("spark.hadoop.fs.s3a.path.style.access", "true")
+        .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
+        .config(
+            "spark.hadoop.fs.s3a.connection.ssl.enabled",
+            os.environ.get("S3_SSL_ENABLED", "true"),
+        )
         .getOrCreate()
     )
 
-    postgres_props = {
-        "user": os.environ["POSTGRES_USER"],
-        "password": os.environ["POSTGRES_PASSWORD"],
-        "driver": "org.postgresql.Driver",
-    }
     clickhouse_props = {
         "user": os.environ.get("CLICKHOUSE_USER", "default"),
         "password": os.environ.get("CLICKHOUSE_PASSWORD", ""),
         "driver": "com.clickhouse.jdbc.ClickHouseDriver",
     }
 
-    raw_df = spark.read.jdbc(
-        url=postgres_jdbc_url(),
-        table=table_config["source_table"],
-        properties=postgres_props,
-    ).filter(F.col("observation_date") == args.business_date)
+    # The raw file is a single JSON document {date, stations: [...]}, not
+    # JSON-lines — multiLine is required or Spark reads it as truncated junk.
+    raw_doc_df = spark.read.option("multiLine", "true").json(
+        f"s3a://{args.bucket}/{args.object_key}"
+    )
+    stations_df = raw_doc_df.select(
+        F.col("date").alias("observation_date"),
+        F.explode("stations").alias("station"),
+    )
 
-    record_count = raw_df.count()
+    record_count = stations_df.count()
 
     ingested_at_col = F.current_timestamp()
     trace_id_lit = F.lit(args.trace_id)
+    # Parsed in Python (not via Spark's to_timestamp + a fixed format
+    # string) because the ISO8601 created_at from the raw.created event may
+    # or may not carry fractional seconds, and to_timestamp silently returns
+    # null on a format mismatch instead of erroring — which slipped a NULL
+    # into a NOT NULL ClickHouse column on the first live run.
+    event_created_at_dt = datetime.fromisoformat(args.event_created_at.replace("Z", "+00:00"))
+    event_created_at_col = F.lit(event_created_at_dt.strftime("%Y-%m-%d %H:%M:%S")).cast(
+        "timestamp"
+    )
 
-    # RAW: аудит-зеркало исходных строк для этого business_date.
-    raw_out = raw_df.withColumn("ingested_at", ingested_at_col)
+    # RAW: аудит-зеркало исходных station-строк для этого business_date.
+    raw_out = stations_df.select(
+        F.lit(args.source_name).alias("source_name"),
+        F.col("observation_date"),
+        F.col("station.wmo_index").cast("string").alias("wmo_index"),
+        F.col("station.name").alias("station_name"),
+        F.col("station.country").alias("country"),
+        F.col("station.min_temp").alias("min_temp"),
+        F.col("station.avg_temp").alias("avg_temp"),
+        F.col("station.max_temp").alias("max_temp"),
+        F.col("station.precipitation").alias("precipitation"),
+        F.lit(args.bucket).alias("raw_bucket"),
+        F.lit(args.object_key).alias("raw_object_key"),
+        F.lit(args.event_id).alias("event_id"),
+        trace_id_lit.alias("trace_id"),
+        event_created_at_col.alias("event_created_at"),
+        ingested_at_col.alias("ingested_at"),
+    )
     raw_out.write.mode("append").jdbc(
         url=clickhouse_jdbc_url(), table=table_config["raw_table"], properties=clickhouse_props
     )
 
     # ODS: типизированный дневной срез (semantics: pipeline/02_ods_daily_tttr.sql).
     ods_out = (
-        raw_df.select(
+        raw_out.select(
             F.col("wmo_index"),
             F.col("station_name"),
             F.col("country"),

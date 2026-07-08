@@ -1,8 +1,7 @@
 # Install as: helm upgrade --install postgres . -n dm-pipeline
-# Stand-in for the operational DB etl_service writes to (weather_actual) —
-# same schema as backend/infra/postgres/init.sql, same default credentials
-# as backend/docker-compose.yml, so pointing dm_pipeline at a real
-# etl_service-managed Postgres later is a values-only change.
+# No longer in the weather-data path (Spark reads raw JSON from S3 directly,
+# see data/pipeline_flow.md). Kept alive, empty, for future front_api user
+# data — same default credentials as backend/docker-compose.yml.
 
 image:
   repository: postgres

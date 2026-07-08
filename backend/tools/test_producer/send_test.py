@@ -8,7 +8,6 @@ from datetime import datetime, timezone
 from typing import Any
 
 import boto3
-import psycopg2
 from botocore.exceptions import ClientError
 from kafka import KafkaProducer
 from kafka.admin import KafkaAdminClient, NewTopic
@@ -18,18 +17,12 @@ from kafka.errors import TopicAlreadyExistsError
 RAW_BUCKET = os.getenv("RAW_BUCKET", "weather-raw")
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
 KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "weather.actual.raw.created")
-POSTGRES_HOST = os.getenv("POSTGRES_HOST", "postgres")
-POSTGRES_PORT = int(os.getenv("POSTGRES_PORT", "5432"))
-POSTGRES_DB = os.getenv("POSTGRES_DB", "weather")
-POSTGRES_USER = os.getenv("POSTGRES_USER", "weather")
-POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "weather")
 S3_ENDPOINT_URL = os.getenv("S3_ENDPOINT_URL", "http://minio:9000")
 AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID", "minioadmin")
 AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY", "minioadmin")
 AWS_DEFAULT_REGION = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
 TEST_SOURCE_NAME = os.getenv("TEST_SOURCE_NAME", "historical_fetcher")
 TEST_SCHEMA_VERSION = int(os.getenv("TEST_SCHEMA_VERSION", "1"))
-EXPECTED_ROW_COUNT = int(os.getenv("EXPECTED_ROW_COUNT", "6"))
 
 
 TEST_RAW_OBJECTS: dict[str, dict[str, Any]] = {
@@ -270,62 +263,6 @@ def send_event(event: dict[str, Any]) -> None:
         producer.close()
 
 
-def wait_for_postgres(timeout_seconds: int = 60):
-    deadline = time.time() + timeout_seconds
-
-    while time.time() < deadline:
-        try:
-            connection = psycopg2.connect(
-                host=POSTGRES_HOST,
-                port=POSTGRES_PORT,
-                dbname=POSTGRES_DB,
-                user=POSTGRES_USER,
-                password=POSTGRES_PASSWORD,
-            )
-            connection.autocommit = True
-            log("postgres is ready", host=POSTGRES_HOST, db=POSTGRES_DB)
-            return connection
-        except Exception as exc:
-            log("waiting for postgres", error=str(exc))
-            time.sleep(2)
-
-    raise TimeoutError("timed out waiting for postgres")
-
-
-def wait_for_etl_result(event_id: str, timeout_seconds: int = 120) -> None:
-    deadline = time.time() + timeout_seconds
-
-    while time.time() < deadline:
-        connection = None
-        try:
-            connection = wait_for_postgres(timeout_seconds=10)
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    SELECT COUNT(*)
-                    FROM weather_actual
-                    WHERE event_id = %s
-                    """,
-                    (event_id,),
-                )
-                row_count = cursor.fetchone()[0]
-
-            log("polling etl result", event_id=event_id, row_count=row_count)
-
-            if row_count == EXPECTED_ROW_COUNT:
-                log("etl verification passed", event_id=event_id, row_count=row_count)
-                return
-        finally:
-            if connection is not None:
-                connection.close()
-
-        time.sleep(3)
-
-    raise TimeoutError(
-        f"etl did not write expected rows in time; expected={EXPECTED_ROW_COUNT}, event_id={event_id}"
-    )
-
-
 def main() -> None:
     log("test producer started")
 
@@ -339,9 +276,16 @@ def main() -> None:
     log("prepared event", event=json.dumps(event, ensure_ascii=False))
 
     send_event(event)
-    wait_for_etl_result(event["event_id"])
 
-    log("e2e test completed successfully")
+    # dm_trigger/Airflow/Spark/ClickHouse only run in k8s, not in this local
+    # docker-compose — this tool can only exercise the S3+Kafka upload half
+    # locally. Verify the rest manually against the cluster: dm_trigger logs
+    # for a triggered DagRun, then ClickHouse dm_fct_daily_weather_current
+    # for the resulting rows (see data/dm_pipeline_integration.md).
+    log(
+        "raw JSON uploaded and event published; verify downstream manually against the cluster",
+        event_id=event["event_id"],
+    )
 
 
 if __name__ == "__main__":

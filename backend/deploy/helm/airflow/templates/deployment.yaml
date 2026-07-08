@@ -27,6 +27,12 @@ spec:
           envFrom:
             - secretRef:
                 name: {{ include "airflow.fullname" . }}
+            # S3_ENDPOINT_URL/RAW_BUCKET/AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY —
+            # created directly by Terraform (yandex-cloud-sample/terraform/stage-1/
+            # object_storage.tf), referenced by name so the key material never
+            # passes through `helm upgrade --set`/values.yaml.
+            - secretRef:
+                name: {{ .Values.s3.secretName }}
           env:
             # Airflow's REST API defaults to session-only auth; dm_trigger
             # calls it with HTTP Basic Auth, which is silently rejected
@@ -39,14 +45,6 @@ spec:
             # affected, doesn't unpause one a human paused on purpose.
             - name: AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION
               value: "False"
-            - name: POSTGRES_HOST
-              value: {{ .Values.weatherPostgres.host | quote }}
-            - name: POSTGRES_PORT
-              value: {{ .Values.weatherPostgres.port | quote }}
-            - name: POSTGRES_DB
-              value: {{ .Values.weatherPostgres.db | quote }}
-            - name: POSTGRES_USER
-              value: {{ .Values.weatherPostgres.user | quote }}
             - name: CLICKHOUSE_HOST
               value: {{ .Values.clickhouse.host | quote }}
             - name: CLICKHOUSE_HTTP_PORT

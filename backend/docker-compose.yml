@@ -60,49 +60,15 @@ services:
     volumes:
       - minio_data:/data
 
-  etl_service:
-    build:
-      context: ./microservices/etl_service
-      dockerfile: Dockerfile
-    container_name: se26-etl-service
-    depends_on:
-      postgres:
-        condition: service_healthy
-      kafka:
-        condition: service_healthy
-      minio:
-        condition: service_started
-    environment:
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
-      POSTGRES_DB: weather
-      POSTGRES_USER: weather
-      POSTGRES_PASSWORD: weather
-
-      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      KAFKA_TOPIC: weather.actual.raw.created
-      KAFKA_GROUP_ID: etl-service
-      KAFKA_AUTO_OFFSET_RESET: earliest
-
-      S3_ENDPOINT_URL: http://minio:9000
-      AWS_ACCESS_KEY_ID: minioadmin
-      AWS_SECRET_ACCESS_KEY: minioadmin
-      AWS_DEFAULT_REGION: us-east-1
-    restart: unless-stopped
-
   test_producer:
     build:
       context: ./tools/test_producer
       dockerfile: Dockerfile
     container_name: se26-test-producer
     depends_on:
-      postgres:
-        condition: service_healthy
       kafka:
         condition: service_healthy
       minio:
-        condition: service_started
-      etl_service:
         condition: service_started
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
@@ -114,15 +80,8 @@ services:
       AWS_DEFAULT_REGION: us-east-1
       RAW_BUCKET: weather-raw
 
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
-      POSTGRES_DB: weather
-      POSTGRES_USER: weather
-      POSTGRES_PASSWORD: weather
-
       TEST_SOURCE_NAME: historical_fetcher
       TEST_SCHEMA_VERSION: "1"
-      EXPECTED_ROW_COUNT: "6"
     profiles:
       - test
     restart: "no"
