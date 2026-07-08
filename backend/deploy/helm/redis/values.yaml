@@ -1,0 +1,22 @@
+# Install as: helm upgrade --install redis . -n dm-pipeline
+# Shared by analytics_api and (later) front_api — Service name must stay
+# "redis" to match REDIS_HOST=redis in backend/.env.
+# No PVC: request/lock state is disposable cache, not a source of truth —
+# losing it on a pod restart just means a few in-flight requests re-fetch.
+# No auth: matches backend/.env, which has no REDIS_PASSWORD.
+
+image:
+  repository: redis
+  tag: "7-alpine"
+  pullPolicy: IfNotPresent
+
+nameOverride: ""
+fullnameOverride: "redis"
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi

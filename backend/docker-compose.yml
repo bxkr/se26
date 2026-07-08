@@ -65,6 +65,79 @@ services:
     volumes:
       - minio_data:/data
 
+  redis:
+    image: redis:7-alpine
+    container_name: se26-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24
+    container_name: se26-clickhouse
+    environment:
+      CLICKHOUSE_DB: weather
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: weather
+    ports:
+      - "8123:8123"
+      - "9100:9000"
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ./infra/clickhouse/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8123/ping || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  regions_api:
+    build:
+      context: ./microservices/regions_api
+      dockerfile: Dockerfile
+    container_name: se26-regions-api
+    ports:
+      - "8001:8000"
+    restart: unless-stopped
+
+  analytics_api:
+    build:
+      context: ./microservices/analytics_api
+      dockerfile: Dockerfile
+    container_name: se26-analytics-api
+    depends_on:
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      regions_api:
+        condition: service_started
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_TOPICS: weather.dm.ready,weather.pipeline.failed
+      KAFKA_GROUP_ID: analytics-api
+
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+
+      CLICKHOUSE_HOST: clickhouse
+      CLICKHOUSE_HTTP_PORT: "8123"
+      CLICKHOUSE_DB: weather
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: weather
+
+      REGIONS_API_URL: http://regions_api:8000
+      ANALYTICS_REQUEST_TIMEOUT_SECONDS: "600"
+    ports:
+      - "8002:8000"
+    restart: unless-stopped
+
   historical_fetcher:
     build:
       context: ./microservices/historical_fetcher
@@ -121,3 +194,4 @@ services:
 volumes:
   postgres_data:
   minio_data:
+  clickhouse_data:
