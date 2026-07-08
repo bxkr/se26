@@ -9,7 +9,6 @@ import com.project.weatherdatafetcher.model.Measurement;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Valid;
 import jakarta.validation.Validator;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.annotation.KafkaListener;
@@ -28,8 +27,7 @@ import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
 import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
-import tools.jackson.databind.ObjectMapper;
-
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -49,9 +47,9 @@ public class EventProcessor {
     private ObjectMapper objectMapper = new ObjectMapper();
 
     public EventProcessor(
-            S3Client s3Client,
-            KafkaTemplate<String, Object> kafkaTemplate,
-            Validator validator
+        S3Client s3Client,
+        KafkaTemplate<String, Object> kafkaTemplate,
+        Validator validator
     ) {
         this.s3Client = s3Client;
         this.kafkaTemplate = kafkaTemplate;
@@ -77,14 +75,20 @@ public class EventProcessor {
             ack.acknowledge();
             return;
         }
-
+        if((event.date_from() == null) || (event.date_to() == null)){
+            log.info("Получены невалидные даты.");
+            ack.acknowledge();
+            return;
+        }
         LocalDate dt_date_from = LocalDate.parse(event.date_from());
         LocalDate dt_date_to = LocalDate.parse(event.date_to());
+
         if(dt_date_from.isAfter(dt_date_to)){
             log.info("Получены невалидные даты.");
             ack.acknowledge();
             return;
         }
+
         try {
 
             List<LocalDate> dates = dt_date_from

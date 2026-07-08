@@ -13,13 +13,13 @@ class KafkaConsumerClient:
         self,
         *,
         bootstrap_servers: list[str],
-        topic: str,
+        topics: list[str],
         group_id: str,
         auto_offset_reset: str = "earliest",
         logger: Any | None = None,
     ) -> None:
         self._bootstrap_servers = bootstrap_servers
-        self._topic = topic
+        self._topics = topics
         self._group_id = group_id
         self._auto_offset_reset = auto_offset_reset
         self._logger = logger
@@ -31,9 +31,14 @@ class KafkaConsumerClient:
         bootstrap_servers_raw = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
         bootstrap_servers = [item.strip() for item in bootstrap_servers_raw.split(",") if item.strip()]
 
+        topics_raw = os.getenv(
+            "KAFKA_TOPICS", "weather.actual.raw.created,weather.forecast.raw.created"
+        )
+        topics = [item.strip() for item in topics_raw.split(",") if item.strip()]
+
         return cls(
             bootstrap_servers=bootstrap_servers,
-            topic=os.getenv("KAFKA_TOPIC", "weather.clean.created"),
+            topics=topics,
             group_id=os.getenv("KAFKA_GROUP_ID", "dm-trigger"),
             auto_offset_reset=os.getenv("KAFKA_AUTO_OFFSET_RESET", "earliest"),
             logger=logger,
@@ -44,7 +49,7 @@ class KafkaConsumerClient:
             return
 
         self._consumer = KafkaConsumer(
-            self._topic,
+            *self._topics,
             bootstrap_servers=self._bootstrap_servers,
             group_id=self._group_id,
             enable_auto_commit=False,
@@ -56,12 +61,12 @@ class KafkaConsumerClient:
 
         self._log_info(
             "kafka consumer started",
-            topic=self._topic,
+            topics=",".join(self._topics),
             group_id=self._group_id,
             bootstrap_servers=",".join(self._bootstrap_servers),
         )
 
-    def consume_forever(self, handler: Callable[[bytes], Any]) -> None:
+    def consume_forever(self, handler: Callable[[bytes, str], Any]) -> None:
         if self._consumer is None:
             self.start()
 
@@ -84,9 +89,9 @@ class KafkaConsumerClient:
 
                 # The handler is responsible for turning any failure into a
                 # terminal weather.pipeline.failed event and swallowing the
-                # exception — a single bad clean.created message must not
+                # exception — a single bad raw.created message must not
                 # crash the consumer loop for every other trace_id in flight.
-                handler(message.value)
+                handler(message.value, message.topic)
 
                 self._consumer.commit()
 
@@ -104,7 +109,7 @@ class KafkaConsumerClient:
             self._consumer.close()
             self._consumer = None
 
-        self._log_info("kafka consumer stopped", topic=self._topic)
+        self._log_info("kafka consumer stopped", topics=",".join(self._topics))
 
     def _log_info(self, message: str, **kwargs: Any) -> None:
         if self._logger and hasattr(self._logger, "info"):

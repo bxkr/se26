@@ -25,8 +25,8 @@ spec:
           env:
             - name: KAFKA_BOOTSTRAP_SERVERS
               value: {{ .Values.kafka.bootstrapServers | quote }}
-            - name: KAFKA_TOPIC
-              value: {{ .Values.kafka.topic | quote }}
+            - name: KAFKA_TOPICS
+              value: {{ .Values.kafka.topics | quote }}
             - name: KAFKA_GROUP_ID
               value: {{ .Values.kafka.groupId | quote }}
             - name: AIRFLOW_BASE_URL

@@ -2,24 +2,35 @@ FROM eclipse-temurin:21-jdk AS build
 
 WORKDIR /build
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl unzip ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
 
-COPY build.gradle settings.gradle gradlew gradlew.bat ./
-COPY gradle ./gradle
+COPY gradle/ ./gradle
+COPY gradlew ./
+
+RUN sed -i 's/\r$//' gradlew && chmod +x gradlew && ./gradlew --version --no-daemon
+
+
+COPY build.gradle settings.gradle ./
+
+
+RUN ./gradlew dependencies --no-daemon || true
+
+
 COPY src ./src
 
-RUN sed -i 's/\r$//' gradlew \
-    && chmod +x gradlew \
-    && ./gradlew clean bootJar --no-daemon
+
+RUN ./gradlew clean bootJar -x test --no-daemon
+
 
 FROM eclipse-temurin:21-jre
 
 WORKDIR /app
 
+
 COPY --from=build /build/build/libs/*.jar /app/app.jar
 
-ENV JAVA_OPTS=""
+
+ENV JAVA_OPTS="-Xms512m -Xmx512m"
+
+EXPOSE 5050
 
 ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar /app/app.jar"]

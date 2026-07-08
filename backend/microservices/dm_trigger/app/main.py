@@ -7,7 +7,7 @@ from typing import Any
 
 from app.clients.airflow_client import AirflowClient
 from app.clients.kafka_client import KafkaConsumerClient, KafkaProducerClient
-from app.handlers.clean_event_handler import CleanEventHandler
+from app.handlers.raw_created_event_handler import RawCreatedEventHandler
 from app.health import start_health_server
 
 
@@ -51,7 +51,7 @@ def main() -> None:
 
     airflow_client = AirflowClient.from_env(logger=logger)
     producer = KafkaProducerClient.from_env(logger=logger)
-    handler = CleanEventHandler(airflow_client=airflow_client, producer=producer, logger=logger)
+    handler = RawCreatedEventHandler(airflow_client=airflow_client, producer=producer, logger=logger)
     kafka_client = KafkaConsumerClient.from_env(logger=logger)
 
     def shutdown_handler(signum: int, frame: Any) -> None:
