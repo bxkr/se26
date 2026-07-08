@@ -1,0 +1,18 @@
+# Install as: helm upgrade --install regions-api . -n dm-pipeline
+# Image is built from backend/microservices/regions_api/Dockerfile.
+
+image:
+  repository: cr.yandex/crpmc4ksa9bqvd59g3dm/dm-pipeline/regions-api-image
+  tag: "latest"
+  pullPolicy: Always
+
+nameOverride: ""
+fullnameOverride: ""
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi
