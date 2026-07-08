@@ -61,11 +61,12 @@ def utc_now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
-def load_request_stations() -> list[dict[str, Any]]:
+def load_request_stations() -> list[str]:
     raw = os.getenv("REQUEST_STATIONS_JSON")
     if not raw:
+        
         return DEFAULT_STATIONS
-    return json.loads(raw)
+    return DEFAULT_STATIONS
 
 
 def build_need_info_event() -> dict[str, Any]:
@@ -82,7 +83,7 @@ def build_need_info_event() -> dict[str, Any]:
             "event_id": event_id,
             "trace_id": trace_id,
             "event_type": "weather.need_info",
-            "source_name": REQUEST_SOURCE_NAME,
+            "requested_by": REQUEST_SOURCE_NAME,
             "date_from": REQUEST_DATE_FROM,
             "date_to": REQUEST_DATE_TO,
             "wmo_indexes": load_request_stations(),
@@ -94,7 +95,7 @@ def build_need_info_event() -> dict[str, Any]:
     payload.setdefault("event_id", event_id)
     payload.setdefault("trace_id", trace_id)
     payload.setdefault("event_type", "weather.need_info")
-    payload.setdefault("source_name", REQUEST_SOURCE_NAME)
+    payload.setdefault("requested_by", REQUEST_SOURCE_NAME)
     payload.setdefault("schema_version", TEST_SCHEMA_VERSION)
     payload.setdefault("created_at", created_at)
 
@@ -269,6 +270,7 @@ def wait_for_raw_created_event(
     request_trace_id = request_event.get("trace_id")
 
     while time.time() < deadline:
+        #log("search")
         batches = consumer.poll(timeout_ms=1000)
         for records in batches.values():
             for record in records:
@@ -424,11 +426,13 @@ def main() -> None:
     send_need_info_event(request_event)
 
     try:
+        log(1)
         raw_event = wait_for_raw_created_event(
             consumer=raw_consumer,
             request_event=request_event,
             timeout_seconds=WAIT_TIMEOUT_SECONDS,
         )
+        log(2)
     finally:
         raw_consumer.close()
 
