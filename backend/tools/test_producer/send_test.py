@@ -9,93 +9,52 @@ from typing import Any
 
 import boto3
 from botocore.exceptions import ClientError
-from kafka import KafkaProducer
+from kafka import KafkaConsumer, KafkaProducer
 from kafka.admin import KafkaAdminClient, NewTopic
-from kafka.errors import TopicAlreadyExistsError
+from kafka.errors import NoBrokersAvailable, TopicAlreadyExistsError
 
 
-RAW_BUCKET = os.getenv("RAW_BUCKET", "weather-raw")
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
+<<<<<<< clickhouse
 KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "weather.actual.raw.created")
+=======
+REQUEST_TOPIC = os.getenv("REQUEST_TOPIC", "weather.need_info")
+RAW_CREATED_TOPIC = os.getenv("RAW_CREATED_TOPIC", "weather.actual.raw.created")
+
+>>>>>>> main
 S3_ENDPOINT_URL = os.getenv("S3_ENDPOINT_URL", "http://minio:9000")
 AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID", "minioadmin")
 AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY", "minioadmin")
 AWS_DEFAULT_REGION = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
+<<<<<<< clickhouse
 TEST_SOURCE_NAME = os.getenv("TEST_SOURCE_NAME", "historical_fetcher")
 TEST_SCHEMA_VERSION = int(os.getenv("TEST_SCHEMA_VERSION", "1"))
+=======
+RAW_BUCKET = os.getenv("RAW_BUCKET", "weather-raw")
 
+POSTGRES_HOST = os.getenv("POSTGRES_HOST", "postgres")
+POSTGRES_PORT = int(os.getenv("POSTGRES_PORT", "5432"))
+POSTGRES_DB = os.getenv("POSTGRES_DB", "weather")
+POSTGRES_USER = os.getenv("POSTGRES_USER", "weather")
+POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "weather")
 
-TEST_RAW_OBJECTS: dict[str, dict[str, Any]] = {
-    "actual/date=1960-01-01.json": {
-        "date": "1960-01-01",
-        "stations": [
-            {
-                "wmo_index": "20674",
-                "name": "Диксон",
-                "country": "Россия",
-                "min_temp": -35.1,
-                "avg_temp": -31.9,
-                "max_temp": -25.9,
-                "precipitation": 0,
-            },
-            {
-                "wmo_index": "20891",
-                "name": "Хатанга",
-                "country": "Россия",
-                "min_temp": -29.0,
-                "avg_temp": -27.5,
-                "max_temp": -24.6,
-                "precipitation": 0,
-            },
-        ],
-    },
-    "actual/date=1960-01-02.json": {
-        "date": "1960-01-02",
-        "stations": [
-            {
-                "wmo_index": "20674",
-                "name": "Диксон",
-                "country": "Россия",
-                "min_temp": -34.2,
-                "avg_temp": -30.8,
-                "max_temp": -26.4,
-                "precipitation": 0,
-            },
-            {
-                "wmo_index": "20891",
-                "name": "Хатанга",
-                "country": "Россия",
-                "min_temp": -28.4,
-                "avg_temp": -26.9,
-                "max_temp": -23.8,
-                "precipitation": 0,
-            },
-        ],
-    },
-    "actual/date=1960-01-03.json": {
-        "date": "1960-01-03",
-        "stations": [
-            {
-                "wmo_index": "20674",
-                "name": "Диксон",
-                "country": "Россия",
-                "min_temp": -33.7,
-                "avg_temp": -30.1,
-                "max_temp": -25.5,
-                "precipitation": 0,
-            },
-            {
-                "wmo_index": "20891",
-                "name": "Хатанга",
-                "country": "Россия",
-                "min_temp": -27.8,
-                "avg_temp": -26.0,
-                "max_temp": -23.1,
-                "precipitation": 0,
-            },
-        ],
-    },
-}
+REQUEST_SOURCE_NAME = os.getenv("REQUEST_SOURCE_NAME", "test_producer")
+EXPECTED_RAW_SOURCE_NAME = os.getenv("EXPECTED_RAW_SOURCE_NAME", "historical_fetcher")
+TEST_SCHEMA_VERSION = int(os.getenv("TEST_SCHEMA_VERSION", "1"))
+EXPECTED_ROW_COUNT = int(os.getenv("EXPECTED_ROW_COUNT", "6"))
+EXPECTED_OBJECT_KEYS_COUNT = int(os.getenv("EXPECTED_OBJECT_KEYS_COUNT", "3"))
+>>>>>>> main
+
+REQUEST_DATE_FROM = os.getenv("REQUEST_DATE_FROM", "1960-01-01")
+REQUEST_DATE_TO = os.getenv("REQUEST_DATE_TO", "1960-01-03")
+
+WAIT_TIMEOUT_SECONDS = int(os.getenv("WAIT_TIMEOUT_SECONDS", "300"))
+POLL_INTERVAL_SECONDS = float(os.getenv("POLL_INTERVAL_SECONDS", "3"))
+
+# Если твой InputEvent.java ожидает другой shape, проще всего поменять только:
+# - build_need_info_event()
+# - REQUEST_STATIONS_JSON / NEED_INFO_PAYLOAD_JSON
+DEFAULT_STATIONS = ["20674","20891"]
 
 
 def log(message: str, **kwargs: Any) -> None:
@@ -104,6 +63,50 @@ def log(message: str, **kwargs: Any) -> None:
         print(f"{message} | {details}", flush=True)
     else:
         print(message, flush=True)
+
+
+def utc_now_iso() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def load_request_stations() -> list[dict[str, Any]]:
+    raw = os.getenv("REQUEST_STATIONS_JSON")
+    if not raw:
+        return DEFAULT_STATIONS
+    return json.loads(raw)
+
+
+def build_need_info_event() -> dict[str, Any]:
+    override_raw = os.getenv("NEED_INFO_PAYLOAD_JSON")
+
+    event_id = str(uuid.uuid4())
+    trace_id = str(uuid.uuid4())
+    created_at = utc_now_iso()
+
+    if override_raw:
+        payload = json.loads(override_raw)
+    else:
+        payload = {
+            "event_id": event_id,
+            "trace_id": trace_id,
+            "event_type": "weather.need_info",
+            "source_name": REQUEST_SOURCE_NAME,
+            "date_from": REQUEST_DATE_FROM,
+            "date_to": REQUEST_DATE_TO,
+            "wmo_indexes": load_request_stations(),
+            "schema_version": TEST_SCHEMA_VERSION,
+            "created_at": created_at,
+            "dataset_type": "weather-raw"
+        }
+
+    payload.setdefault("event_id", event_id)
+    payload.setdefault("trace_id", trace_id)
+    payload.setdefault("event_type", "weather.need_info")
+    payload.setdefault("source_name", REQUEST_SOURCE_NAME)
+    payload.setdefault("schema_version", TEST_SCHEMA_VERSION)
+    payload.setdefault("created_at", created_at)
+
+    return payload
 
 
 def build_s3_client():
@@ -117,18 +120,16 @@ def build_s3_client():
 
 
 def wait_for_s3(timeout_seconds: int = 60):
-    s3 = build_s3_client()
     deadline = time.time() + timeout_seconds
-
     while time.time() < deadline:
         try:
+            s3 = build_s3_client()
             s3.list_buckets()
             log("s3 is ready", endpoint=S3_ENDPOINT_URL)
             return s3
         except Exception as exc:
             log("waiting for s3", error=str(exc))
             time.sleep(2)
-
     raise TimeoutError("timed out waiting for s3")
 
 
@@ -144,28 +145,8 @@ def ensure_bucket(s3) -> None:
     log("bucket created", bucket=RAW_BUCKET)
 
 
-def upload_raw_objects(s3) -> list[str]:
-    object_keys = sorted(TEST_RAW_OBJECTS.keys())
-
-    for object_key in object_keys:
-        payload = TEST_RAW_OBJECTS[object_key]
-        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-
-        s3.put_object(
-            Bucket=RAW_BUCKET,
-            Key=object_key,
-            Body=body,
-            ContentType="application/json; charset=utf-8",
-        )
-
-        log("uploaded raw object", bucket=RAW_BUCKET, object_key=object_key)
-
-    return object_keys
-
-
 def wait_for_kafka_admin(timeout_seconds: int = 60) -> KafkaAdminClient:
     deadline = time.time() + timeout_seconds
-
     while time.time() < deadline:
         try:
             admin = KafkaAdminClient(
@@ -178,37 +159,44 @@ def wait_for_kafka_admin(timeout_seconds: int = 60) -> KafkaAdminClient:
         except Exception as exc:
             log("waiting for kafka admin", error=str(exc))
             time.sleep(2)
-
     raise TimeoutError("timed out waiting for kafka admin")
 
 
-def ensure_topic() -> None:
+def ensure_topics() -> None:
     admin = wait_for_kafka_admin()
     try:
-        topics = set(admin.list_topics())
-        if KAFKA_TOPIC in topics:
-            log("topic already exists", topic=KAFKA_TOPIC)
-            return
+        existing = set(admin.list_topics())
+        specs = [
+            (REQUEST_TOPIC, 3),
+            (RAW_CREATED_TOPIC, 3),
+        ]
 
-        admin.create_topics(
-            new_topics=[
+        to_create = []
+        for topic_name, partitions in specs:
+            if topic_name in existing:
+                log("topic already exists", topic=topic_name)
+                continue
+            to_create.append(
                 NewTopic(
-                    name=KAFKA_TOPIC,
-                    num_partitions=3,
+                    name=topic_name,
+                    num_partitions=partitions,
                     replication_factor=1,
                 )
-            ],
-            validate_only=False,
-        )
-        log("topic created", topic=KAFKA_TOPIC)
+            )
+
+        if to_create:
+            admin.create_topics(new_topics=to_create, validate_only=False)
+            for topic in to_create:
+                log("topic created", topic=topic.name)
     except TopicAlreadyExistsError:
-        log("topic already exists", topic=KAFKA_TOPIC)
+        log("topic already exists due to race condition")
     finally:
         admin.close()
 
 
 def wait_for_kafka_producer(timeout_seconds: int = 60) -> KafkaProducer:
     deadline = time.time() + timeout_seconds
+    last_error: str | None = None
 
     while time.time() < deadline:
         try:
@@ -217,63 +205,90 @@ def wait_for_kafka_producer(timeout_seconds: int = 60) -> KafkaProducer:
                 value_serializer=lambda value: json.dumps(value, ensure_ascii=False).encode("utf-8"),
                 retries=5,
             )
-            producer.bootstrap_connected()
-            log("kafka producer is ready", bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS)
-            return producer
+            if producer.bootstrap_connected():
+                log("kafka producer is ready", bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS)
+                return producer
+
+            producer.close()
+            last_error = "bootstrap not connected yet"
+        except NoBrokersAvailable as exc:
+            last_error = str(exc)
         except Exception as exc:
-            log("waiting for kafka producer", error=str(exc))
-            time.sleep(2)
+            last_error = str(exc)
 
-    raise TimeoutError("timed out waiting for kafka producer")
+        log("waiting for kafka producer", error=last_error)
+        time.sleep(2)
 
-
-def build_event(object_keys: list[str]) -> dict[str, Any]:
-    dates = [key.replace("actual/date=", "").replace(".json", "") for key in object_keys]
-
-    return {
-        "event_id": str(uuid.uuid4()),
-        "trace_id": str(uuid.uuid4()),
-        "event_type": "weather.actual.raw.created",
-        "source_name": TEST_SOURCE_NAME,
-        "bucket": RAW_BUCKET,
-        "object_keys": object_keys,
-        "date_from": min(dates),
-        "date_to": max(dates),
-        "schema_version": TEST_SCHEMA_VERSION,
-        "created_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-    }
+    raise TimeoutError(f"timed out waiting for kafka producer: {last_error}")
 
 
-def send_event(event: dict[str, Any]) -> None:
+def build_raw_created_consumer(timeout_seconds: int = 60) -> KafkaConsumer:
+    consumer = KafkaConsumer(
+        RAW_CREATED_TOPIC,
+        bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+        group_id=f"test-producer-raw-wait-{uuid.uuid4()}",
+        auto_offset_reset="latest",
+        enable_auto_commit=False,
+        value_deserializer=lambda value: json.loads(value.decode("utf-8")),
+        consumer_timeout_ms=1000,
+    )
+
+    deadline = time.time() + timeout_seconds
+    while time.time() < deadline:
+        consumer.poll(timeout_ms=1000)
+        if consumer.assignment():
+            log(
+                "raw.created consumer is ready",
+                topic=RAW_CREATED_TOPIC,
+                assigned_partitions=len(consumer.assignment()),
+            )
+            return consumer
+
+    consumer.close()
+    raise TimeoutError("timed out waiting for raw.created consumer assignment")
+
+
+def send_need_info_event(event: dict[str, Any]) -> None:
     producer = wait_for_kafka_producer()
     try:
-        future = producer.send(KAFKA_TOPIC, value=event)
+        future = producer.send(REQUEST_TOPIC, value=event)
         metadata = future.get(timeout=30)
         producer.flush()
 
         log(
-            "event sent to kafka",
+            "need_info event sent to kafka",
             topic=metadata.topic,
             partition=metadata.partition,
             offset=metadata.offset,
-            event_id=event["event_id"],
-            trace_id=event["trace_id"],
+            event_id=event.get("event_id"),
+            trace_id=event.get("trace_id"),
         )
     finally:
         producer.close()
 
 
 def main() -> None:
-    log("test producer started")
+    log("historical fetcher e2e orchestrator started")
 
     s3 = wait_for_s3()
     ensure_bucket(s3)
-    object_keys = upload_raw_objects(s3)
+    ensure_topics()
 
-    ensure_topic()
+    raw_consumer = build_raw_created_consumer()
 
-    event = build_event(object_keys)
-    log("prepared event", event=json.dumps(event, ensure_ascii=False))
+    request_event = build_need_info_event()
+    log("prepared need_info event", event=json.dumps(request_event, ensure_ascii=False))
+
+    send_need_info_event(request_event)
+
+    try:
+        raw_event = wait_for_raw_created_event(
+            consumer=raw_consumer,
+            request_event=request_event,
+            timeout_seconds=WAIT_TIMEOUT_SECONDS,
+        )
+    finally:
+        raw_consumer.close()
 
     send_event(event)
 
