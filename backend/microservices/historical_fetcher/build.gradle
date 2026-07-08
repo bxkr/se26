@@ -25,19 +25,24 @@ ext {
 dependencies {
 
     implementation platform('software.amazon.awssdk:bom:2.25.0')
+    implementation 'software.amazon.awssdk:s3'
 
     implementation 'com.fasterxml.jackson.core:jackson-databind'
-    implementation 'software.amazon.awssdk:s3'
 
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     implementation 'org.springframework.boot:spring-boot-starter-webflux'
-    implementation 'com.fasterxml.jackson.core:jackson-databind'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
-    implementation 'org.springframework.kafka:spring-kafka'
+
+
+    implementation 'org.springframework.boot:spring-boot-starter-kafka'
+
+
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
+
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
-    testImplementation 'org.springframework.kafka:spring-kafka-test'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-kafka-test'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
