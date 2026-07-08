@@ -1,0 +1,6 @@
+apiVersion: v2
+name: regions-api
+description: Small lookup API over stations_regions.csv (WMO station <-> region <-> coordinates)
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

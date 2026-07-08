@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "clickhouse.fullname" . }}-init
+  labels:
+    {{- include "clickhouse.labels" . | nindent 4 }}
+data:
+  schema.sql: |-
+{{ .Files.Get "files/schema.sql" | indent 4 }}

@@ -1,0 +1,10 @@
+{
+  "event_id": "3a2f7d5e-2b3d-4b2b-9a6b-1e7c6a0f3f2d",
+  "trace_id": "1c0aa3e8-2aa8-4d0b-8c7e-a37d7fa4fb4e",
+  "event_type": "weather.dm.ready",
+  "dataset_type": "actual",
+  "observation_date": "1960-01-01",
+  "record_count": 2,
+  "schema_version": 1,
+  "created_at": "2026-07-06T12:20:00Z"
+}

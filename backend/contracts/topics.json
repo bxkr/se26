@@ -1,5 +1,7 @@
 {
   "weather_need_info": "weather.need_info",
   "weather_actual_raw_created": "weather.actual.raw.created",
-  "weather_clean_created": "weather.clean.created"
+  "weather_forecast_raw_created": "weather.forecast.raw.created",
+  "weather_dm_ready": "weather.dm.ready",
+  "weather_pipeline_failed": "weather.pipeline.failed"
 }

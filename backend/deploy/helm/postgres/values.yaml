@@ -1,0 +1,29 @@
+# Install as: helm upgrade --install postgres . -n dm-pipeline
+# No longer in the weather-data path (Spark reads raw JSON from S3 directly,
+# see data/pipeline_flow.md). Kept alive, empty, for future front_api user
+# data — same default credentials as backend/docker-compose.yml.
+
+image:
+  repository: postgres
+  tag: "16"
+  pullPolicy: IfNotPresent
+
+auth:
+  db: weather
+  user: weather
+  password: weather
+
+nameOverride: ""
+fullnameOverride: ""
+
+persistence:
+  size: 2Gi
+  storageClassName: ""
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 250m
+    memory: 512Mi

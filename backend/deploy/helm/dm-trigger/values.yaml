@@ -1,0 +1,31 @@
+# Install as: helm upgrade --install dm-trigger . -n dm-pipeline
+# Image is built from backend/microservices/dm_trigger/Dockerfile.
+
+image:
+  repository: cr.yandex/crpmc4ksa9bqvd59g3dm/dm-pipeline/dm-trigger-image
+  tag: "latest"
+  # Always, not IfNotPresent: actively iterating under a floating "latest"
+  # tag — IfNotPresent silently keeps whatever digest is already cached.
+  pullPolicy: Always
+
+nameOverride: ""
+fullnameOverride: ""
+
+kafka:
+  bootstrapServers: "kafka:9092"
+  topics: "weather.actual.raw.created,weather.forecast.raw.created"
+  groupId: "dm-trigger"
+
+airflow:
+  baseUrl: "http://airflow:8080"
+  dagId: "dm_pipeline"
+  username: admin
+  password: admin
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 100m
+    memory: 256Mi

@@ -1,0 +1,32 @@
+# Install as: helm upgrade --install kafka . -n dm-pipeline
+# (release name "kafka" matters — other charts address this service as
+# "kafka:9092", relying on the historical-data fullname convention where a
+# release name equal to the chart name collapses to just the chart name.)
+
+image:
+  repository: confluentinc/cp-kafka
+  tag: "7.6.1"
+  pullPolicy: IfNotPresent
+
+nameOverride: ""
+fullnameOverride: ""
+
+persistence:
+  size: 5Gi
+  storageClassName: ""
+
+# KRaft cluster id — any fixed 22-char base64-ish string is fine for a
+# single-node, non-HA broker (matches backend/docker-compose.yml).
+kraft:
+  clusterId: "MkU3OEVBNTcwNTJENDM2Qk"
+
+resources:
+  requests:
+    cpu: 300m
+    memory: 768Mi
+  limits:
+    # kafka-topics (used by the health probes) spins up its own JVM per
+    # call; too tight a CPU limit makes that alone flirt with probe
+    # timeouts even once the broker itself is healthy.
+    cpu: 1000m
+    memory: 1Gi

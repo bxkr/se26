@@ -1,0 +1,6 @@
+apiVersion: v2
+name: postgres
+description: Stand-in operational PostgreSQL (weather_actual) for dm-pipeline until etl_service is deployed to this cluster
+type: application
+version: 0.1.0
+appVersion: "16"

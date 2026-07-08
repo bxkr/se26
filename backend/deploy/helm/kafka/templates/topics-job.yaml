@@ -1,0 +1,43 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kafka.fullname" . }}-create-topics
+  labels:
+    {{- include "kafka.labels" . | nindent 4 }}
+data:
+  create_topics.sh: |-
+{{ .Files.Get "files/create_topics.sh" | indent 4 }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "kafka.fullname" . }}-create-topics-{{ .Release.Revision }}
+  labels:
+    {{- include "kafka.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 6
+  template:
+    metadata:
+      labels:
+        {{- include "kafka.labels" . | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: create-topics
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          command: ["bash", "/scripts/create_topics.sh"]
+          env:
+            - name: KAFKA_BOOTSTRAP_SERVER
+              value: "{{ include "kafka.fullname" . }}:9092"
+          volumeMounts:
+            - name: create-topics-script
+              mountPath: /scripts
+      volumes:
+        - name: create-topics-script
+          configMap:
+            name: {{ include "kafka.fullname" . }}-create-topics
+            defaultMode: 0755

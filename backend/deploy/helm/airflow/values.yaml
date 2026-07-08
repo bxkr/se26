@@ -1,0 +1,72 @@
+# Install as: helm upgrade --install airflow . -n dm-pipeline
+# Image is built from backend/microservices/dm_pipeline/Dockerfile.
+
+image:
+  repository: cr.yandex/crpmc4ksa9bqvd59g3dm/dm-pipeline/dm-pipeline-image
+  tag: "latest"
+  # Always, not IfNotPresent: image is actively iterated under a floating
+  # "latest" tag right now — IfNotPresent would silently keep running
+  # whatever digest the node already cached under that tag.
+  pullPolicy: Always
+
+nameOverride: ""
+fullnameOverride: ""
+
+# Airflow's own metadata DB — separate from weatherPostgres below.
+metadataPostgres:
+  image:
+    repository: postgres
+    tag: "16"
+  db: airflow
+  user: airflow
+  password: airflow
+  persistence:
+    size: 2Gi
+    storageClassName: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 250m
+      memory: 512Mi
+
+# `airflow standalone` admin user, also used by dm_trigger for the REST API
+# (AIRFLOW_API_USERNAME/AIRFLOW_API_PASSWORD).
+webAdmin:
+  username: admin
+  password: admin
+
+# Raw daily weather JSON source — managed Yandex Object Storage bucket.
+# secretName points at a k8s Secret created directly by Terraform
+# (yandex-cloud-sample/terraform/stage-1/object_storage.tf) with keys
+# S3_ENDPOINT_URL/RAW_BUCKET/AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY —
+# referenced by name via envFrom so the key material never has to pass
+# through values.yaml or a `helm upgrade --set`.
+s3:
+  secretName: "weather-raw-s3"
+
+# DM target — points at the clickhouse/ chart by default.
+clickhouse:
+  host: clickhouse
+  httpPort: "8123"
+  db: weather
+  user: default
+  # Must match deploy/helm/clickhouse/values.yaml's auth.password.
+  password: "weather"
+
+kafka:
+  bootstrapServers: "kafka:9092"
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 1.5Gi
+  limits:
+    # airflow standalone (webserver+scheduler+triggerer in one pod) plus a
+    # local[2] PySpark JVM for the DAG task, running concurrently in the
+    # same container — 2Gi OOMKilled it during the first real DAG run.
+    # Bumped 4Gi->5Gi after adding hadoop-aws+aws-java-sdk-bundle to the
+    # Spark driver classpath (S3A connector) — watch for OOM on first run.
+    cpu: 1500m
+    memory: 5Gi
