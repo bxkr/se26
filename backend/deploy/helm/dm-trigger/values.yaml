@@ -13,7 +13,7 @@ fullnameOverride: ""
 
 kafka:
   bootstrapServers: "kafka:9092"
-  topic: "weather.clean.created"
+  topics: "weather.actual.raw.created,weather.forecast.raw.created"
   groupId: "dm-trigger"
 
 airflow:

@@ -1,9 +1,10 @@
-"""DAG: PostgreSQL(weather_actual) -> ClickHouse (RAW/ODS/DM), одна из
-двух половин dm_trigger -> Airflow -> Spark -> ClickHouse, описанной в
+"""DAG: S3 (raw daily JSON) -> ClickHouse (RAW/ODS/DM), одна из двух половин
+dm_trigger -> Airflow -> Spark -> ClickHouse, описанной в
 data/pipeline_flow.md.
 
 Триггерится ТОЛЬКО извне (dm_trigger, POST /api/v1/dags/dm_pipeline/dagRuns
-с conf={trace_id, business_date}) — расписания нет.
+с conf={trace_id, business_date, dataset_type, bucket, object_key,
+source_name, event_id, event_created_at}) — расписания нет.
 """
 
 from __future__ import annotations
@@ -21,28 +22,37 @@ sys.path.insert(0, str(Path(__file__).parent))
 from common.kafka_events import publish_event  # noqa: E402
 
 DAG_ID = "dm_pipeline"
-SPARK_JOB_PATH = "/opt/spark_jobs/postgres_to_clickhouse.py"
+SPARK_JOB_PATH = "/opt/spark_jobs/s3_to_clickhouse.py"
 RESULT_DIR = "/opt/airflow/spark_results"
-SPARK_JARS = "/opt/spark_jars/postgresql.jar,/opt/spark_jars/clickhouse-jdbc.jar"
+SPARK_JARS = (
+    "/opt/spark_jars/hadoop-aws.jar,"
+    "/opt/spark_jars/aws-java-sdk-bundle.jar,"
+    "/opt/spark_jars/clickhouse-jdbc.jar"
+)
 
 
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
-def _result_path(trace_id: str) -> str:
-    return f"{RESULT_DIR}/{trace_id}.json"
+def _result_path(run_id: str) -> str:
+    # dag_run_id (not event_id/trace_id) is what's actually unique per DAG
+    # run — event_id and trace_id are both shared across the several DAG
+    # runs fanned out from one manifest event (one per business_date), so
+    # either alone would collide as a result-file name.
+    return f"{RESULT_DIR}/{run_id}.json"
 
 
 def publish_dm_ready(**context) -> None:
     import json
 
-    conf = context["dag_run"].conf or {}
+    dag_run = context["dag_run"]
+    conf = dag_run.conf or {}
     trace_id = conf["trace_id"]
     business_date = conf["business_date"]
     dataset_type = conf.get("dataset_type", "actual")
 
-    with open(_result_path(trace_id)) as fh:
+    with open(_result_path(dag_run.run_id)) as fh:
         result = json.load(fh)
 
     event = {
@@ -79,7 +89,7 @@ def publish_pipeline_failed(context) -> None:
 
 with DAG(
     dag_id=DAG_ID,
-    description="weather_actual (PostgreSQL) -> ClickHouse RAW/ODS/DM via PySpark, triggered per weather.clean.created",
+    description="S3 raw daily JSON -> ClickHouse RAW/ODS/DM via PySpark, triggered per weather.{actual,forecast}.raw.created",
     schedule=None,
     start_date=datetime(2026, 1, 1),
     catchup=False,
@@ -99,9 +109,14 @@ with DAG(
             f"spark-submit --master local[2] --driver-memory 1g --jars {SPARK_JARS} {SPARK_JOB_PATH} "
             "--business-date {{ dag_run.conf['business_date'] }} "
             "--trace-id {{ dag_run.conf['trace_id'] }} "
-            "--dataset-type {{ dag_run.conf.get('dataset_type', 'actual') }} "
+            "--dataset-type {{ dag_run.conf['dataset_type'] }} "
+            "--bucket {{ dag_run.conf['bucket'] }} "
+            "--object-key {{ dag_run.conf['object_key'] }} "
+            "--source-name {{ dag_run.conf['source_name'] }} "
+            "--event-id {{ dag_run.conf['event_id'] }} "
+            "--event-created-at {{ dag_run.conf['event_created_at'] }} "
             f"--result-path {RESULT_DIR}/"
-            "{{ dag_run.conf['trace_id'] }}.json"
+            "{{ dag_run.run_id }}.json"
         ),
     )
 
