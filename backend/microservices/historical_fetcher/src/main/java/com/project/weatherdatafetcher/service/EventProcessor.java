@@ -61,27 +61,27 @@ public class EventProcessor {
     @KafkaListener(topics = "${app.kafka.input-topic}", groupId = "s3-uploader-historical-group")
     public void handleEvent(@Valid @Payload InputEvent event, Acknowledgment ack) {
 
-        log.info(">> Получено событие. Обработка данных для ID: {}", event.eventId());
+        log.info(">> Получено событие. Обработка данных для ID: {}", event.event_id());
 
-        if(event.RequestedWmoIndexes().isEmpty()){
+        if(event.wmo_indexes().isEmpty()){
             log.info("Получен пустой список RequestedWmoIndexes.");
             ack.acknowledge();
             return;
         }
-        if(event.startDate().isAfter(event.endDate())){
+        if(event.start_date().isAfter(event.end_date())){
             log.info("Получены невалидные даты.");
             ack.acknowledge();
             return;
         }
         try {
 
-            List<LocalDate> dates = event.startDate()
-                    .datesUntil(event.endDate().plusDays(1))
+            List<LocalDate> dates = event.start_date()
+                    .datesUntil(event.end_date().plusDays(1))
                     .toList();
 
             ConcurrentLinkedQueue<String> s3Keys = new ConcurrentLinkedQueue<>();
 
-            Set<String> targetWmoIndexes = event.RequestedWmoIndexes().stream()
+            Set<String> targetWmoIndexes = event.wmo_indexes().stream()
                     .map(String::valueOf)
                     .collect(Collectors.toSet());
 
@@ -145,26 +145,26 @@ public class EventProcessor {
                     .block(java.time.Duration.ofMinutes(3));
 
             if (s3Keys.isEmpty()) {
-                log.warn("Ни один файл не был сохранен в S3 для ID: {}", event.eventId());
+                log.warn("Ни один файл не был сохранен в S3 для ID: {}", event.event_id());
                 ack.acknowledge();
                 return;
             }
 
             OutputReceipt receipt = new OutputReceipt(
-                    java.util.UUID.randomUUID().toString(), event.traceId(),
+                    java.util.UUID.randomUUID().toString(), event.trace_id(),
                     "weather.actual.raw.created", "historical_fetcher", bucketName,
-                    new ArrayList<>(s3Keys), event.startDate().toString(),
-                    event.endDate().toString(), event.schemaVersion(), LocalDateTime.now()
+                    new ArrayList<>(s3Keys), event.start_date().toString(),
+                    event.end_date().toString(), event.schema_version(), LocalDateTime.now()
             );
 
-            kafkaTemplate.send(outputTopic, event.eventId(), receipt).get(10, java.util.concurrent.TimeUnit.SECONDS);
-            log.info("Успешно отправлена квитанция в Kafka для ID: {}", event.eventId());
+            kafkaTemplate.send(outputTopic, event.event_id(), receipt).get(10, java.util.concurrent.TimeUnit.SECONDS);
+            log.info("Успешно отправлена квитанция в Kafka для ID: {}", event.event_id());
 
             ack.acknowledge();
-            log.info(">> Событие {} успешно обработано и подтверждено", event.eventId());
+            log.info(">> Событие {} успешно обработано и подтверждено", event.event_id());
 
         } catch (Exception e) {
-            log.error("Критический сбой при обработке события ID: {}.", event.eventId(), e);
+            log.error("Критический сбой при обработке события ID: {}.", event.event_id(), e);
             throw new RuntimeException("Ошибка обработки события Kafka", e);
         }
 

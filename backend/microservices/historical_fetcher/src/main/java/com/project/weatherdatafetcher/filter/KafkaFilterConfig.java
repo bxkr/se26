@@ -18,10 +18,10 @@ public class KafkaFilterConfig {
 
 
             if (value instanceof InputEvent event) {
-                if (event.datasetType() == null) {
+                if (event.dataset_type() == null) {
                     return true;
                 }
-                return !event.datasetType().equals("weather-raw");
+                return !event.dataset_type().equals("weather-raw");
             }
 
             return true;
