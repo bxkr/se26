@@ -42,10 +42,15 @@ services:
 
       CLUSTER_ID: "MkU3OEVBNTcwNTJENDM2Qk"
     healthcheck:
-      test: ["CMD-SHELL", "kafka-topics --bootstrap-server localhost:9092 --list >/dev/null 2>&1"]
+      test:
+        [
+          "CMD-SHELL",
+          "/usr/bin/kafka-topics --bootstrap-server localhost:9092 --list >/dev/null 2>&1 || exit 1"
+        ]
       interval: 10s
       timeout: 10s
-      retries: 20
+      retries: 30
+      start_period: 30s
 
   minio:
     image: minio/minio:latest
@@ -98,10 +103,7 @@ services:
       REQUEST_DATE_FROM: "1960-01-01"
       REQUEST_DATE_TO: "1960-01-03"
       REQUEST_STATIONS_JSON: >
-        [
-          {"wmo_index":"20674","name":"Диксон","country":"Россия"},
-          {"wmo_index":"20891","name":"Хатанга","country":"Россия"}
-        ]
+        '["20674", "20891"]'
     profiles:
       - test
     restart: "no"

@@ -1,6 +1,6 @@
 package com.project.weatherdatafetcher.dto;
 
-import java.time.LocalDateTime;
+
 import java.util.List;
 
 public record OutputReceipt(
@@ -13,5 +13,5 @@ public record OutputReceipt(
         String date_from,
         String date_to,
         Integer schema_version,
-        LocalDateTime created_at
+        String created_at
 ) {}

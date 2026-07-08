@@ -13,6 +13,7 @@ import org.springframework.kafka.listener.adapter.RecordFilterStrategy;
 import org.springframework.kafka.support.serializer.ErrorHandlingDeserializer;
 import org.springframework.kafka.support.serializer.JacksonJsonDeserializer;
 import org.springframework.kafka.support.serializer.JacksonJsonSerializer;
+import org.springframework.boot.kafka.autoconfigure.ConcurrentKafkaListenerContainerFactoryConfigurer;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -49,16 +50,30 @@ public class KafkaConfig {
 
         props.put(JacksonJsonDeserializer.TRUSTED_PACKAGES, "*");
 
+        props.put(
+            JacksonJsonDeserializer.VALUE_DEFAULT_TYPE,
+            "com.project.weatherdatafetcher.dto.InputEvent"
+        );
+
+        props.put(
+            JacksonJsonDeserializer.USE_TYPE_INFO_HEADERS,
+            false
+        );
+
+
         return new DefaultKafkaConsumerFactory<>(props);
     }
 
     @Bean
     public ConcurrentKafkaListenerContainerFactory<String, Object> kafkaListenerContainerFactory(
+            ConsumerFactory<String, Object> consumerFactory,
+            ConcurrentKafkaListenerContainerFactoryConfigurer configurer,
             RecordFilterStrategy<Object, Object> datasetTypeFilter) {
 
         ConcurrentKafkaListenerContainerFactory<String, Object> factory =
                 new ConcurrentKafkaListenerContainerFactory<>();
-        factory.setConsumerFactory(consumerFactory());
+
+        factory.setConsumerFactory(consumerFactory);
         factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.MANUAL_IMMEDIATE);
 
         factory.setRecordFilterStrategy(datasetTypeFilter);

@@ -15,21 +15,13 @@ from kafka.errors import NoBrokersAvailable, TopicAlreadyExistsError
 
 
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
-<<<<<<< clickhouse
-KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "weather.actual.raw.created")
-=======
 REQUEST_TOPIC = os.getenv("REQUEST_TOPIC", "weather.need_info")
 RAW_CREATED_TOPIC = os.getenv("RAW_CREATED_TOPIC", "weather.actual.raw.created")
 
->>>>>>> main
 S3_ENDPOINT_URL = os.getenv("S3_ENDPOINT_URL", "http://minio:9000")
 AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID", "minioadmin")
 AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY", "minioadmin")
 AWS_DEFAULT_REGION = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
-<<<<<<< clickhouse
-TEST_SOURCE_NAME = os.getenv("TEST_SOURCE_NAME", "historical_fetcher")
-TEST_SCHEMA_VERSION = int(os.getenv("TEST_SCHEMA_VERSION", "1"))
-=======
 RAW_BUCKET = os.getenv("RAW_BUCKET", "weather-raw")
 
 POSTGRES_HOST = os.getenv("POSTGRES_HOST", "postgres")
@@ -43,7 +35,6 @@ EXPECTED_RAW_SOURCE_NAME = os.getenv("EXPECTED_RAW_SOURCE_NAME", "historical_fet
 TEST_SCHEMA_VERSION = int(os.getenv("TEST_SCHEMA_VERSION", "1"))
 EXPECTED_ROW_COUNT = int(os.getenv("EXPECTED_ROW_COUNT", "6"))
 EXPECTED_OBJECT_KEYS_COUNT = int(os.getenv("EXPECTED_OBJECT_KEYS_COUNT", "3"))
->>>>>>> main
 
 REQUEST_DATE_FROM = os.getenv("REQUEST_DATE_FROM", "1960-01-01")
 REQUEST_DATE_TO = os.getenv("REQUEST_DATE_TO", "1960-01-03")
@@ -69,11 +60,12 @@ def utc_now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
-def load_request_stations() -> list[dict[str, Any]]:
+def load_request_stations() -> list[str]:
     raw = os.getenv("REQUEST_STATIONS_JSON")
     if not raw:
+        
         return DEFAULT_STATIONS
-    return json.loads(raw)
+    return DEFAULT_STATIONS
 
 
 def build_need_info_event() -> dict[str, Any]:
@@ -90,7 +82,7 @@ def build_need_info_event() -> dict[str, Any]:
             "event_id": event_id,
             "trace_id": trace_id,
             "event_type": "weather.need_info",
-            "source_name": REQUEST_SOURCE_NAME,
+            "requested_by": REQUEST_SOURCE_NAME,
             "date_from": REQUEST_DATE_FROM,
             "date_to": REQUEST_DATE_TO,
             "wmo_indexes": load_request_stations(),
@@ -102,7 +94,7 @@ def build_need_info_event() -> dict[str, Any]:
     payload.setdefault("event_id", event_id)
     payload.setdefault("trace_id", trace_id)
     payload.setdefault("event_type", "weather.need_info")
-    payload.setdefault("source_name", REQUEST_SOURCE_NAME)
+    payload.setdefault("requested_by", REQUEST_SOURCE_NAME)
     payload.setdefault("schema_version", TEST_SCHEMA_VERSION)
     payload.setdefault("created_at", created_at)
 
@@ -282,11 +274,13 @@ def main() -> None:
     send_need_info_event(request_event)
 
     try:
+        log(1)
         raw_event = wait_for_raw_created_event(
             consumer=raw_consumer,
             request_event=request_event,
             timeout_seconds=WAIT_TIMEOUT_SECONDS,
         )
+        log(2)
     finally:
         raw_consumer.close()
 
