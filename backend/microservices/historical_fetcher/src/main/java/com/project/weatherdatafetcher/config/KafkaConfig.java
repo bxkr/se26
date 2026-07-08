@@ -59,10 +59,6 @@ public class KafkaConfig {
             false
         );
 
-        props.put(
-            JacksonJsonDeserializer.TRUSTED_PACKAGES,
-            "com.project.weatherdatafetcher.dto"
-        );
 
         return new DefaultKafkaConsumerFactory<>(props);
     }

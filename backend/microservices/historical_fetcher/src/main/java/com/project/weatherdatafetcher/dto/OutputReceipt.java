@@ -1,6 +1,6 @@
 package com.project.weatherdatafetcher.dto;
 
-import java.time.LocalDateTime;
+
 import java.util.List;
 
 public record OutputReceipt(
