@@ -74,6 +74,8 @@ spec:
               value: {{ .Values.clickhouse.user | quote }}
             - name: KAFKA_BOOTSTRAP_SERVERS
               value: {{ .Values.kafka.bootstrapServers | quote }}
+            - name: SPARK_CONNECT_URL
+              value: {{ .Values.sparkConnect.url | quote }}
           ports:
             - name: http
               containerPort: 8080

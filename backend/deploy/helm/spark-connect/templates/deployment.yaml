@@ -1,0 +1,106 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "spark-connect.fullname" . }}
+  labels:
+    {{- include "spark-connect.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    # Recreate, not RollingUpdate: two SparkConnectServer driver JVMs on the
+    # same node at once would double the memory footprint mid-rollout for
+    # no benefit — dm_pipeline DAG runs just retry via Airflow if a request
+    # lands during the brief restart window.
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "spark-connect.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "spark-connect.labels" . | nindent 8 }}
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: spark-connect
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          # Overrides the image's ENTRYPOINT (docker-entrypoint.sh, which
+          # bootstraps `airflow standalone` — not relevant here). spark-submit
+          # itself runs in the foreground and blocks for as long as the
+          # driver is alive, which is exactly the long-running process this
+          # container needs; --class runs SparkConnectServer's main() instead
+          # of a user job file.
+          command: ["spark-submit"]
+          args:
+            - --class
+            - org.apache.spark.sql.connect.service.SparkConnectServer
+            - --name
+            - "Spark Connect Server"
+            - --master
+            - "local[2]"
+            - --driver-memory
+            - "1g"
+            - --jars
+            - "/opt/spark_jars/spark-connect.jar,/opt/spark_jars/hadoop-aws.jar,/opt/spark_jars/aws-java-sdk-bundle.jar,/opt/spark_jars/clickhouse-jdbc.jar"
+            - --conf
+            - "spark.connect.grpc.binding.port={{ .Values.grpc.port }}"
+            # S3A config lives here (server-side), not in s3_to_clickhouse.py
+            # anymore — Spark Connect clients can't set spark.hadoop.* confs
+            # per-session, those are JVM/driver-level.
+            - --conf
+            - "spark.hadoop.fs.s3a.endpoint=$(S3_ENDPOINT_URL)"
+            - --conf
+            - "spark.hadoop.fs.s3a.access.key=$(AWS_ACCESS_KEY_ID)"
+            - --conf
+            - "spark.hadoop.fs.s3a.secret.key=$(AWS_SECRET_ACCESS_KEY)"
+            - --conf
+            - "spark.hadoop.fs.s3a.path.style.access=true"
+            - --conf
+            - "spark.hadoop.fs.s3a.impl=org.apache.hadoop.fs.s3a.S3AFileSystem"
+            - --conf
+            - "spark.hadoop.fs.s3a.connection.ssl.enabled=true"
+          envFrom:
+            # S3_ENDPOINT_URL/AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY — same
+            # Terraform-created secret the airflow chart uses (see that
+            # chart's values.yaml comment for why it's referenced by name
+            # instead of going through values.yaml/--set).
+            - secretRef:
+                name: {{ .Values.s3.secretName }}
+          ports:
+            - name: grpc
+              containerPort: {{ .Values.grpc.port }}
+          readinessProbe:
+            tcpSocket:
+              port: grpc
+            # Same JVM/SparkContext/S3A bootstrap cost this chart exists to
+            # pay ONCE instead of per-request (see req_9b6c2c3697db timeline
+            # analysis) — generous initialDelay so the pod isn't flapped as
+            # not-ready during its one unavoidable cold start.
+            initialDelaySeconds: 45
+            periodSeconds: 15
+            timeoutSeconds: 10
+            failureThreshold: 6
+          livenessProbe:
+            tcpSocket:
+              port: grpc
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 10
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "spark-connect.fullname" . }}
+  labels:
+    {{- include "spark-connect.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: grpc
+      port: {{ .Values.grpc.port }}
+      targetPort: grpc
+  selector:
+    {{- include "spark-connect.selectorLabels" . | nindent 4 }}

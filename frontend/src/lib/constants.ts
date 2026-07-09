@@ -30,7 +30,7 @@ export const EXPLORER_DEFAULT_RANGE_TO = "2024-12-28";
 export const EXPLORER_DEFAULT_REGION_ID = "44";
 export const EXPLORER_DEFAULT_STATION = {
   wmoIndex: "26075",
-  name: "ST.PETERSBURG (VOEJKOVO) (RS)",
+  name: "Санкт-Петербург (Воейково) (РС)",
 } as const;
 
 export const DEMO_CREDENTIALS = {

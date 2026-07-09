@@ -21,8 +21,10 @@ error per metric. Days where the other side doesn't exist yet are simply
 absent from the join; the mart backfills whenever the second side arrives
 (order of actual/forecast doesn't matter).
 
-Run by dm_pipeline_dag.py via spark-submit --master local[2] (no separate
-Spark cluster, lean profile, one pod alongside Airflow standalone).
+Run by dm_pipeline_dag.py as a thin Spark Connect client against the
+persistent server in backend/deploy/helm/spark-connect (see
+build_spark_session) — falls back to a local[2] driver when no Connect
+server is configured (docker-compose / local dev).
 """
 
 from __future__ import annotations
@@ -66,7 +68,34 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--event-id", required=True, help="raw.created event_id (unique per manifest)")
     parser.add_argument("--event-created-at", required=True, help="ISO8601 created_at from the raw.created event")
     parser.add_argument("--result-path", required=True, help="where to write {record_count, date_from, date_to} JSON")
+    parser.add_argument(
+        "--spark-connect-url",
+        default=os.environ.get("SPARK_CONNECT_URL"),
+        help="sc://host:port of a persistent Spark Connect server. When set, this process is a thin "
+        "gRPC client (no local JVM/S3A/driver startup) instead of spawning its own local[2] Spark "
+        "driver — S3A and ClickHouse-JDBC configuration then live server-side, not here. Falls back "
+        "to a local driver when unset (docker-compose / no Connect server deployed).",
+    )
     return parser.parse_args()
+
+
+def build_spark_session(*, app_name: str, spark_connect_url: str | None) -> SparkSession:
+    if spark_connect_url:
+        return SparkSession.builder.appName(app_name).remote(spark_connect_url).getOrCreate()
+    return (
+        SparkSession.builder.appName(app_name)
+        .master("local[2]")
+        .config("spark.hadoop.fs.s3a.endpoint", os.environ["S3_ENDPOINT_URL"])
+        .config("spark.hadoop.fs.s3a.access.key", os.environ["AWS_ACCESS_KEY_ID"])
+        .config("spark.hadoop.fs.s3a.secret.key", os.environ["AWS_SECRET_ACCESS_KEY"])
+        .config("spark.hadoop.fs.s3a.path.style.access", "true")
+        .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
+        .config(
+            "spark.hadoop.fs.s3a.connection.ssl.enabled",
+            os.environ.get("S3_SSL_ENABLED", "true"),
+        )
+        .getOrCreate()
+    )
 
 
 def _daterange(date_from: str, date_to: str) -> list[str]:
@@ -148,21 +177,22 @@ def main() -> None:
     args = parse_args()
     table_config = TABLE_CONFIG[args.dataset_type]
 
-    spark = (
-        SparkSession.builder.appName(f"dm_pipeline-{args.trace_id}")
-        .master("local[2]")
-        .config("spark.hadoop.fs.s3a.endpoint", os.environ["S3_ENDPOINT_URL"])
-        .config("spark.hadoop.fs.s3a.access.key", os.environ["AWS_ACCESS_KEY_ID"])
-        .config("spark.hadoop.fs.s3a.secret.key", os.environ["AWS_SECRET_ACCESS_KEY"])
-        .config("spark.hadoop.fs.s3a.path.style.access", "true")
-        .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
-        .config(
-            "spark.hadoop.fs.s3a.connection.ssl.enabled",
-            os.environ.get("S3_SSL_ENABLED", "true"),
-        )
-        .getOrCreate()
+    spark = build_spark_session(
+        app_name=f"dm_pipeline-{args.trace_id}", spark_connect_url=args.spark_connect_url
     )
+    stations_df = None
+    try:
+        stations_df = _run(spark, args, table_config)
+    finally:
+        if stations_df is not None:
+            stations_df.unpersist()
+        spark.stop()
 
+
+def _run(spark: SparkSession, args: argparse.Namespace, table_config: dict):
+    """Returns the cached stations_df so the caller can unpersist it — kept
+    as one function (not split further) since every downstream DataFrame
+    here is derived from it and the flow reads top-to-bottom as one script."""
     clickhouse_props = {
         "user": os.environ.get("CLICKHOUSE_USER", "default"),
         "password": os.environ.get("CLICKHOUSE_PASSWORD", ""),
@@ -190,8 +220,21 @@ def main() -> None:
         F.explode("stations").alias("station"),
         F.col("raw_object_key"),
     )
+    # Without this, every action below (count, then the 3 separate .write.jdbc
+    # calls for raw/ods/dm) re-executes this whole lineage from scratch —
+    # re-reading and re-parsing every S3 file once per action instead of
+    # once total. Cheap to keep in memory (a date range here is at most a
+    # few hundred rows) and matters more now that a persistent Spark Connect
+    # server (see build_spark_session) runs many requests' data through the
+    # same long-lived driver — unpersisted here at the end either way so it
+    # doesn't accumulate across requests.
+    stations_df.cache()
 
-    record_count = stations_df.count()
+    # int(): under Spark Connect, .count() returns numpy.int64 (Arrow-backed
+    # result collection), not a plain Python int like classic local Spark —
+    # json.dump rejects numpy.int64 with "Object of type int64 is not JSON
+    # serializable" further down otherwise.
+    record_count = int(stations_df.count())
 
     ingested_at_col = F.current_timestamp()
     trace_id_lit = F.lit(args.trace_id)
@@ -279,7 +322,7 @@ def main() -> None:
             fh,
         )
 
-    spark.stop()
+    return stations_df
 
 
 if __name__ == "__main__":

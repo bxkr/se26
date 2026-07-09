@@ -46,6 +46,14 @@ webAdmin:
 s3:
   secretName: "weather-raw-s3"
 
+# Persistent Spark Connect server (backend/deploy/helm/spark-connect) that
+# dm_pipeline_dag.py's run_spark_transform task connects to instead of
+# spinning up its own local[2] spark-submit JVM per DAG run — removes the
+# ~26s JVM/SparkContext/S3A cold-start that used to be paid on every single
+# request (see req_9b6c2c3697db timeline analysis, 2026-07-09).
+sparkConnect:
+  url: "sc://spark-connect:15002"
+
 # DM target — points at the clickhouse/ chart by default.
 clickhouse:
   host: clickhouse

@@ -7,7 +7,7 @@ from collections import defaultdict
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-DATA_PATH = os.environ.get("STATIONS_CSV_PATH", "/app/data/stations_regions_v2.csv")
+DATA_PATH = os.environ.get("STATIONS_CSV_PATH", "/app/data/stations_regions_v3.csv")
 
 app = FastAPI(title="regions_api")
 

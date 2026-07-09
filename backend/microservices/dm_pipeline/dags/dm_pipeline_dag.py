@@ -26,11 +26,6 @@ from common.kafka_events import publish_event  # noqa: E402
 DAG_ID = "dm_pipeline"
 SPARK_JOB_PATH = "/opt/spark_jobs/s3_to_clickhouse.py"
 RESULT_DIR = "/opt/airflow/spark_results"
-SPARK_JARS = (
-    "/opt/spark_jars/hadoop-aws.jar,"
-    "/opt/spark_jars/aws-java-sdk-bundle.jar,"
-    "/opt/spark_jars/clickhouse-jdbc.jar"
-)
 
 
 def _utc_now_iso() -> str:
@@ -105,12 +100,15 @@ with DAG(
         task_id="run_spark_transform",
         bash_command=(
             f"mkdir -p {RESULT_DIR} && "
-            # local[2] + explicit driver-memory: even a month-wide range is
-            # still hundreds of rows, not big data — local[*] plus Spark's
-            # own heap sizing on top of the concurrently-running Airflow
-            # webserver/scheduler/triggerer OOMKilled the pod on the first
-            # real run.
-            f"spark-submit --master local[2] --driver-memory 1g --jars {SPARK_JARS} {SPARK_JOB_PATH} "
+            # Plain python3, not spark-submit: SPARK_CONNECT_URL (set on
+            # this pod's env, see backend/deploy/helm/airflow) makes
+            # s3_to_clickhouse.py a thin gRPC client against the persistent
+            # Spark Connect server (backend/deploy/helm/spark-connect) — no
+            # local JVM/driver spins up here anymore, so no --master/--jars/
+            # --driver-memory. Falls back to a local[2] driver in this same
+            # process if SPARK_CONNECT_URL is unset (docker-compose / local
+            # dev without a Connect server deployed).
+            f"python3 {SPARK_JOB_PATH} "
             "--date-from {{ dag_run.conf['date_from'] }} "
             "--date-to {{ dag_run.conf['date_to'] }} "
             "--trace-id {{ dag_run.conf['trace_id'] }} "

@@ -9,18 +9,25 @@ RUN apt-get update \
 ENV JAVA_HOME=/usr/lib/jvm/default-java
 ENV PATH="/home/airflow/.local/bin:${JAVA_HOME}/bin:${PATH}"
 
-# JARs used by spark_jobs/s3_to_clickhouse.py (via --jars in the DAG's
-# spark-submit command, not auto-discovered): hadoop-aws + aws-java-sdk-bundle
+# JARs used by spark_jobs/s3_to_clickhouse.py: hadoop-aws + aws-java-sdk-bundle
 # give Spark the S3A filesystem connector to read raw JSON straight from S3;
 # clickhouse-jdbc is still needed to write the RAW/ODS/DM layers out.
-# Versions matched to pyspark==3.5.1's bundled Hadoop 3.3.4.
+# spark-connect is the server-side plugin for the persistent Spark Connect
+# server (see backend/deploy/helm/spark-connect) — this image doubles as
+# both the Airflow/client image (Spark Connect *client*, thin gRPC, no JVM
+# needed) and the Connect *server* image (spark-connect chart overrides the
+# container command to launch SparkConnectServer instead of Airflow); same
+# image, different entrypoint, so both sides always agree on jar/pyspark
+# versions. Versions matched to pyspark==3.5.1's bundled Hadoop 3.3.4.
 RUN mkdir -p /opt/spark_jars \
     && curl -fsSL -o /opt/spark_jars/hadoop-aws.jar \
         https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/3.3.4/hadoop-aws-3.3.4.jar \
     && curl -fsSL -o /opt/spark_jars/aws-java-sdk-bundle.jar \
         https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.12.262/aws-java-sdk-bundle-1.12.262.jar \
     && curl -fsSL -o /opt/spark_jars/clickhouse-jdbc.jar \
-        https://repo1.maven.org/maven2/com/clickhouse/clickhouse-jdbc/0.6.3/clickhouse-jdbc-0.6.3-all.jar
+        https://repo1.maven.org/maven2/com/clickhouse/clickhouse-jdbc/0.6.3/clickhouse-jdbc-0.6.3-all.jar \
+    && curl -fsSL -o /opt/spark_jars/spark-connect.jar \
+        https://repo1.maven.org/maven2/org/apache/spark/spark-connect_2.12/3.5.1/spark-connect_2.12-3.5.1.jar
 
 COPY spark_jobs /opt/spark_jobs
 RUN mkdir -p /opt/airflow/spark_results && chown -R airflow:root /opt/airflow/spark_results

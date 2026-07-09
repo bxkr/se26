@@ -1,0 +1,6 @@
+apiVersion: v2
+name: spark-connect
+description: Persistent Spark Connect server (org.apache.spark.sql.connect.service.SparkConnectServer) for dm_pipeline — replaces one spark-submit --master local[2] JVM per DAG run with a long-lived driver that DAG runs connect to as thin gRPC clients.
+type: application
+version: 0.1.0
+appVersion: "3.5.1"

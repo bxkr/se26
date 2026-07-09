@@ -1,0 +1,36 @@
+# Install as: helm upgrade --install spark-connect . -n dm-pipeline
+# Reuses the dm-pipeline-image (backend/microservices/dm_pipeline/Dockerfile)
+# — same image as the airflow chart, just with the container command
+# overridden to launch SparkConnectServer instead of Airflow. Keeps the
+# server and the client (dm_pipeline_dag.py, running in the airflow pod)
+# permanently in sync on pyspark/jar versions since they're literally the
+# same image.
+
+image:
+  repository: cr.yandex/crpmc4ksa9bqvd59g3dm/dm-pipeline/dm-pipeline-image
+  tag: "latest"
+  pullPolicy: Always
+
+nameOverride: ""
+fullnameOverride: ""
+
+# Same bucket the airflow chart's DAG passes into s3_to_clickhouse.py — S3A
+# access here is server-side config now (Spark Connect clients can't set
+# spark.hadoop.* per-session), so this chart needs the same secret.
+s3:
+  secretName: "weather-raw-s3"
+
+grpc:
+  port: 15002
+
+resources:
+  requests:
+    # Sized like the local[2] JVM the airflow pod used to run per DAG task
+    # (see airflow chart's resources comment) — same driver-memory 1g, plus
+    # headroom since it now serves concurrent actual+forecast sessions
+    # instead of one-JVM-per-run.
+    cpu: 500m
+    memory: 1.5Gi
+  limits:
+    cpu: 1500m
+    memory: 2.5Gi
