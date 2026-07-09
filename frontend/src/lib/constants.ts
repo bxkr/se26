@@ -27,6 +27,11 @@ export const DEFAULT_RANGE_FROM = new Date(new Date(REQUEST_MAX_DATE).getTime() 
 // instead of the rolling "last 30 days" the other pages use.
 export const EXPLORER_DEFAULT_RANGE_FROM = "2024-10-15";
 export const EXPLORER_DEFAULT_RANGE_TO = "2024-12-28";
+export const EXPLORER_DEFAULT_REGION_ID = "44";
+export const EXPLORER_DEFAULT_STATION = {
+  wmoIndex: "26075",
+  name: "ST.PETERSBURG (VOEJKOVO) (RS)",
+} as const;
 
 export const DEMO_CREDENTIALS = {
   username: "demo",

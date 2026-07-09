@@ -10,21 +10,51 @@ import { useAsyncDashboardQuery } from "../hooks/useAsyncDashboardQuery";
 import { regionsForecastErrors, stationsForecastErrors } from "../api/endpoints/dashboard";
 import { queryKeys } from "../lib/queryKeys";
 import { strings } from "../lib/strings";
-import { EXPLORER_DEFAULT_RANGE_FROM, EXPLORER_DEFAULT_RANGE_TO } from "../lib/constants";
+import {
+  EXPLORER_DEFAULT_RANGE_FROM,
+  EXPLORER_DEFAULT_RANGE_TO,
+  EXPLORER_DEFAULT_REGION_ID,
+  EXPLORER_DEFAULT_STATION,
+} from "../lib/constants";
+
+type ExplorerSelectionsByMode = Record<ExplorerMode, string[]>;
+
+const KNOWN_EXPLORER_STATION_NAMES = {
+  [EXPLORER_DEFAULT_STATION.wmoIndex]: EXPLORER_DEFAULT_STATION.name,
+};
 
 export function ExplorerPage() {
   const { wmoIndex } = useParams();
-  const [draftMode, setDraftMode] = useState<ExplorerMode>(wmoIndex ? "station" : "region");
-  const [draftSelected, setDraftSelected] = useState<string[]>(wmoIndex ? [wmoIndex] : []);
+  const initialMode: ExplorerMode = wmoIndex ? "station" : "region";
+  const initialSelections: ExplorerSelectionsByMode = {
+    region: [EXPLORER_DEFAULT_REGION_ID],
+    station: [wmoIndex ?? EXPLORER_DEFAULT_STATION.wmoIndex],
+  };
+
+  const [draftMode, setDraftMode] = useState<ExplorerMode>(initialMode);
+  const [draftSelections, setDraftSelections] = useState<ExplorerSelectionsByMode>(initialSelections);
   const [draftRange, setDraftRange] = useState({ from: EXPLORER_DEFAULT_RANGE_FROM, to: EXPLORER_DEFAULT_RANGE_TO });
 
   const [mode, setMode] = useState(draftMode);
-  const [selected, setSelected] = useState(draftSelected);
+  const [selections, setSelections] = useState<ExplorerSelectionsByMode>(draftSelections);
   const [range, setRange] = useState(draftRange);
+
+  const draftSelected = draftSelections[draftMode];
+  const selected = selections[mode];
+
+  function setDraftSelected(nextSelected: string[]) {
+    setDraftSelections((prev) => ({ ...prev, [draftMode]: nextSelected }));
+  }
+
+  function handleModeChange(nextMode: ExplorerMode) {
+    setDraftMode(nextMode);
+    setMode(nextMode);
+    setSelections((prev) => ({ ...prev, [nextMode]: draftSelections[nextMode] }));
+  }
 
   function applyFilters() {
     setMode(draftMode);
-    setSelected(draftSelected);
+    setSelections(draftSelections);
     setRange(draftRange);
   }
 
@@ -52,9 +82,10 @@ export function ExplorerPage() {
           <div className="w-72">
             <RegionStationPicker
               mode={draftMode}
-              onModeChange={setDraftMode}
+              onModeChange={handleModeChange}
               selected={draftSelected}
               onChange={setDraftSelected}
+              knownStationNames={KNOWN_EXPLORER_STATION_NAMES}
             />
           </div>
           <DateRangePicker from={draftRange.from} to={draftRange.to} onChange={setDraftRange} showForecastHint />

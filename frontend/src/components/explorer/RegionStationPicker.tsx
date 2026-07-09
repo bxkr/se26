@@ -12,6 +12,7 @@ interface RegionStationPickerProps {
   onModeChange: (mode: ExplorerMode) => void;
   selected: string[];
   onChange: (selected: string[]) => void;
+  knownStationNames?: Record<string, string>;
 }
 
 const SEARCH_DEBOUNCE_MS = 275;
@@ -20,7 +21,13 @@ function regionName(id: string): string {
   return RUSSIAN_REGIONS.find((r) => r.id === id)?.name ?? id;
 }
 
-export function RegionStationPicker({ mode, onModeChange, selected, onChange }: RegionStationPickerProps) {
+export function RegionStationPicker({
+  mode,
+  onModeChange,
+  selected,
+  onChange,
+  knownStationNames = {},
+}: RegionStationPickerProps) {
   const [draft, setDraft] = useState("");
   const [regionMatches, setRegionMatches] = useState<typeof RUSSIAN_REGIONS>([]);
   const [stationMatches, setStationMatches] = useState<StationSearchResult[]>([]);
@@ -81,6 +88,11 @@ export function RegionStationPicker({ mode, onModeChange, selected, onChange }: 
     e.preventDefault();
     if (mode === "region" && regionMatches.length > 0) addRegion(regionMatches[0].id);
     else if (mode === "station" && stationMatches.length > 0) addStation(stationMatches[0]);
+  }
+
+  function stationLabel(wmoIndex: string): string {
+    const name = stationNamesById[wmoIndex] ?? knownStationNames[wmoIndex];
+    return name ? `${name} (${wmoIndex})` : wmoIndex;
   }
 
   const matches = mode === "region" ? regionMatches : stationMatches;
@@ -147,9 +159,7 @@ export function RegionStationPicker({ mode, onModeChange, selected, onChange }: 
             >
               {mode === "region"
                 ? regionName(item)
-                : stationNamesById[item]
-                  ? `${stationNamesById[item]} (${item})`
-                  : item}
+                : stationLabel(item)}
               <button onClick={() => onChange(selected.filter((s) => s !== item))} aria-label={strings.common.close}>
                 <CloseIcon width={12} height={12} />
               </button>
