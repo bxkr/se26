@@ -66,3 +66,10 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+/* Native date-input calendar icon renders black regardless of app theme;
+   color-scheme tells the browser to draw its built-in controls (including
+   the calendar picker indicator) in a light-on-dark palette. */
+.dark input[type="date"] {
+  color-scheme: dark;
+}

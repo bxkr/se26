@@ -1,5 +1,6 @@
 import { useState } from "react";
 import clsx from "clsx";
+import { ChevronUpIcon, ChevronDownIcon } from "./Icons";
 
 export interface DataTableColumn<T> {
   key: string;
@@ -63,8 +64,15 @@ export function DataTable<T>({ columns, rows, rowKey, onRowClick, emptyMessage }
                   col.sortValue && "cursor-pointer select-none hover:text-ink",
                 )}
               >
-                {col.header}
-                {sortKey === col.key && (sortDir === "asc" ? " ↑" : " ↓")}
+                <span className="inline-flex items-center gap-1">
+                  {col.header}
+                  {sortKey === col.key &&
+                    (sortDir === "asc" ? (
+                      <ChevronUpIcon width={12} height={12} />
+                    ) : (
+                      <ChevronDownIcon width={12} height={12} />
+                    ))}
+                </span>
               </th>
             ))}
           </tr>

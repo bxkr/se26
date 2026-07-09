@@ -3,6 +3,7 @@ import { Input } from "../common/Input";
 import { strings } from "../../lib/strings";
 import { RUSSIAN_REGIONS } from "../../lib/russianRegions";
 import { searchStations, type StationSearchResult } from "../../api/endpoints/regions";
+import { CloseIcon } from "../common/Icons";
 
 export type ExplorerMode = "region" | "station";
 
@@ -150,7 +151,7 @@ export function RegionStationPicker({ mode, onModeChange, selected, onChange }: 
                   ? `${stationNamesById[item]} (${item})`
                   : item}
               <button onClick={() => onChange(selected.filter((s) => s !== item))} aria-label={strings.common.close}>
-                ✕
+                <CloseIcon width={12} height={12} />
               </button>
             </span>
           ))}

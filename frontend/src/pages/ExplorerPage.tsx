@@ -10,13 +10,13 @@ import { useAsyncDashboardQuery } from "../hooks/useAsyncDashboardQuery";
 import { regionsForecastErrors, stationsForecastErrors } from "../api/endpoints/dashboard";
 import { queryKeys } from "../lib/queryKeys";
 import { strings } from "../lib/strings";
-import { DEFAULT_RANGE_FROM, DEFAULT_RANGE_TO } from "../lib/constants";
+import { EXPLORER_DEFAULT_RANGE_FROM, EXPLORER_DEFAULT_RANGE_TO } from "../lib/constants";
 
 export function ExplorerPage() {
   const { wmoIndex } = useParams();
   const [draftMode, setDraftMode] = useState<ExplorerMode>(wmoIndex ? "station" : "region");
   const [draftSelected, setDraftSelected] = useState<string[]>(wmoIndex ? [wmoIndex] : []);
-  const [draftRange, setDraftRange] = useState({ from: DEFAULT_RANGE_FROM, to: DEFAULT_RANGE_TO });
+  const [draftRange, setDraftRange] = useState({ from: EXPLORER_DEFAULT_RANGE_FROM, to: EXPLORER_DEFAULT_RANGE_TO });
 
   const [mode, setMode] = useState(draftMode);
   const [selected, setSelected] = useState(draftSelected);

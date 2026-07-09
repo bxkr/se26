@@ -6,16 +6,19 @@ import type {
   UpdateUserRequest,
 } from "../../types/admin";
 
-export function listUsers(): Promise<AdminUser[]> {
-  return apiGet("/admin/users");
+export async function listUsers(): Promise<AdminUser[]> {
+  const { users } = await apiGet<{ users: AdminUser[] }>("/admin/users");
+  return users;
 }
 
-export function createUser(body: CreateUserRequest): Promise<AdminUser> {
-  return apiPost("/admin/users", body);
+export async function createUser(body: CreateUserRequest): Promise<AdminUser> {
+  const { user } = await apiPost<{ user: AdminUser }>("/admin/users", body);
+  return user;
 }
 
-export function updateUser(id: string, body: UpdateUserRequest): Promise<AdminUser> {
-  return apiPatch(`/admin/users/${id}`, body);
+export async function updateUser(id: string, body: UpdateUserRequest): Promise<AdminUser> {
+  const { user } = await apiPatch<{ user: AdminUser }>(`/admin/users/${id}`, body);
+  return user;
 }
 
 export function deleteUser(id: string): Promise<void> {

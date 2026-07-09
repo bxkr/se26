@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { strings } from "../../lib/strings";
+import { CloseIcon } from "./Icons";
 
 interface ModalProps {
   title: string;
@@ -28,7 +29,7 @@ export function Modal({ title, onClose, children }: ModalProps) {
             aria-label={strings.common.close}
             className="text-ink-muted hover:text-ink"
           >
-            ✕
+            <CloseIcon />
           </button>
         </div>
         {children}

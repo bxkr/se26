@@ -24,6 +24,7 @@ export const strings = {
     logout: "Выйти",
     demoBadge: "Демо-режим",
     theme: "Тема",
+    menu: "Меню",
   },
   filters: {
     dateFrom: "Дата с",

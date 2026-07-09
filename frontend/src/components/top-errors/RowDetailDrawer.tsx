@@ -1,6 +1,7 @@
 import { ERROR_FIELDS } from "../../lib/errorFields";
 import { strings } from "../../lib/strings";
 import type { ForecastErrorRow } from "../../types/dashboard";
+import { CloseIcon } from "../common/Icons";
 
 interface RowDetailDrawerProps {
   row: ForecastErrorRow;
@@ -19,7 +20,7 @@ export function RowDetailDrawer({ row, onClose }: RowDetailDrawerProps) {
             {row.station_name ? `${row.station_name} (${row.wmo_index})` : row.wmo_index}
           </h2>
           <button onClick={onClose} aria-label={strings.common.close} className="text-ink-muted hover:text-ink">
-            ✕
+            <CloseIcon />
           </button>
         </div>
         <p className="mb-4 font-mono text-sm text-ink-secondary">{row.day}</p>
