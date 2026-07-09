@@ -58,7 +58,7 @@ export function AdminPage() {
   return (
     <PageContainer>
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="font-display text-xl font-semibold text-ink">{strings.admin.title}</h1>
+        <h1 className="border-b border-dashed border-border pb-2 font-display text-xl font-semibold text-ink">{strings.admin.title}</h1>
         <Button onClick={() => setShowCreate(true)}>{strings.admin.createUser}</Button>
       </div>
 

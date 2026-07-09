@@ -233,6 +233,46 @@
 
 ---
 
+# 4b) `POST /metrics/model/daily`
+
+**Назначение:** те же метрики, что в `/metrics/model`, но с разбивкой по дням — источник для трендового графика на дашборде. Добавлен позже основного контракта (не было в исходной спецификации), тот же request/response shape, что и `/metrics/model`, просто `data` — не один объект, а `{"rows": [...]}` по дням. Дни без данных в диапазоне просто отсутствуют в массиве (без заполнения нулями/`null`).
+
+### Request
+```json
+{
+  "from": "2026-07-01",
+  "to": "2026-07-07"
+}
+```
+
+### Response `200`
+```json
+{
+  "status": "ready",
+  "data": {
+    "rows": [
+      {
+        "day": "2026-07-01",
+        "rows_count": 17862,
+        "temperature_mae": 1.75,
+        "temperature_bias": -0.18,
+        "temp_min_mae": 1.40,
+        "temp_min_bias": -0.09,
+        "temp_max_mae": 2.05,
+        "temp_max_bias": -0.30,
+        "precipitation_mm_mae": 0.70,
+        "precipitation_mm_bias": 0.05
+      }
+    ]
+  }
+}
+```
+
+### Response `202`
+Та же форма, что у `/metrics/model` — `{"status": "pending", "request_id": "..."}`.
+
+---
+
 # 5) `GET /requests/{requestId}`
 
 **Назначение:** статус асинхронного запроса.

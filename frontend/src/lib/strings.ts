@@ -56,6 +56,9 @@ export const strings = {
     tempMaxBias: "Смещение макс. темп.",
     precipitationMae: "MAE осадков",
     precipitationBias: "Смещение осадков",
+    maeTrend: "Точность прогноза по дням (MAE)",
+    biasTrend: "Смещение прогноза по дням",
+    trendEmpty: "Нет данных для графика за этот период.",
   },
   topErrors: {
     title: "Топ ошибок",

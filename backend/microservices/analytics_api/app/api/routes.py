@@ -91,6 +91,16 @@ async def metrics_model(payload: MetricsModelRequest, request: Request) -> JSONR
     return _status_response(result)
 
 
+@router.post("/metrics/model/daily")
+async def metrics_model_daily(payload: MetricsModelRequest, request: Request) -> JSONResponse:
+    """Same filter contract as /metrics/model, grouped by day — feeds the
+    dashboard trend chart. Not part of the original analytics_front_contract.md
+    surface; kept as an additive, backward-compatible extension."""
+    service = request.app.state.model_metrics_service
+    result = await service.get_model_metrics_daily(date_from=payload.from_, date_to=payload.to)
+    return _status_response(result)
+
+
 @router.get("/requests/{request_id}")
 async def get_request_status(request_id: str, request: Request) -> dict:
     redis_client = request.app.state.redis_client

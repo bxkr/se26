@@ -161,3 +161,36 @@ class ClickHouseClient:
         columns = result.column_names
         row = result.result_rows[0]
         return dict(zip(columns, row))
+
+    async def get_model_metrics_daily(self, *, date_from: str, date_to: str) -> list[dict]:
+        """Same aggregation as get_model_metrics, grouped by day — powers the
+        dashboard trend chart. Days with no rows in range are simply absent
+        (no gap-filling); the frontend renders whatever points come back."""
+        client = await self._get_client()
+        result = await client.query(
+            f"""
+            SELECT
+                day,
+                count() AS rows_count,
+                avg(temperature_abs_error) AS temperature_mae,
+                avg(temperature_error) AS temperature_bias,
+                avg(temp_min_abs_error) AS temp_min_mae,
+                avg(temp_min_error) AS temp_min_bias,
+                avg(temp_max_abs_error) AS temp_max_mae,
+                avg(temp_max_error) AS temp_max_bias,
+                avg(precipitation_mm_abs_error) AS precipitation_mm_mae,
+                avg(precipitation_mm_error) AS precipitation_mm_bias
+            FROM {TABLE}
+            WHERE day BETWEEN {{date_from:Date32}} AND {{date_to:Date32}}
+            GROUP BY day
+            ORDER BY day
+            """,
+            parameters={"date_from": date_from, "date_to": date_to},
+        )
+        columns = result.column_names
+        rows = []
+        for row in result.result_rows:
+            values = dict(zip(columns, row))
+            values["day"] = values["day"].isoformat()
+            rows.append(values)
+        return rows

@@ -5,6 +5,7 @@ import type {
   ErrorsTopRequest,
   ForecastErrorsData,
   ModelMetrics,
+  ModelMetricsDailyData,
   ModelMetricsRequest,
   RegionsForecastErrorsRequest,
   StationsForecastErrorsRequest,
@@ -28,4 +29,8 @@ export function errorsTop(body: ErrorsTopRequest): Promise<AsyncResult<ErrorsTop
 
 export function metricsModel(body: ModelMetricsRequest): Promise<AsyncResult<ModelMetrics>> {
   return apiPost("/metrics/model", body);
+}
+
+export function metricsModelDaily(body: ModelMetricsRequest): Promise<AsyncResult<ModelMetricsDailyData>> {
+  return apiPost("/metrics/model/daily", body);
 }

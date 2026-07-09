@@ -63,3 +63,11 @@ export interface ModelMetrics {
   precipitation_mm_mae: number | null;
   precipitation_mm_bias: number | null;
 }
+
+export interface ModelMetricsDailyRow extends ModelMetrics {
+  day: string;
+}
+
+export interface ModelMetricsDailyData {
+  rows: ModelMetricsDailyRow[];
+}

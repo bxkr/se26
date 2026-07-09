@@ -16,15 +16,30 @@ export function LandingPage() {
     <div className="chart-grid-paper relative flex min-h-screen flex-col items-center justify-center gap-10 overflow-hidden bg-page px-4 text-center">
       <svg
         aria-hidden
-        viewBox="0 0 1200 300"
+        viewBox="0 0 1200 360"
         preserveAspectRatio="none"
-        className="pointer-events-none absolute inset-x-0 top-1/2 h-[280px] w-full -translate-y-1/2 opacity-[0.14]"
+        className="pointer-events-none absolute inset-x-0 top-1/2 h-[340px] w-full -translate-y-1/2"
       >
         <path
-          d="M0,180 L60,170 L120,190 L180,140 L240,150 L300,90 L360,110 L420,60 L480,80 L540,40 L600,70 L660,30 L720,55 L780,20 L840,50 L900,15 L960,45 L1020,25 L1080,55 L1140,35 L1200,60"
+          d="M0,230 L60,220 L120,240 L180,190 L240,200 L300,140 L360,160 L420,110 L480,130 L540,90 L600,120 L660,80 L720,105 L780,70 L840,100 L900,65 L960,95 L1020,75 L1080,105 L1140,85 L1200,110"
           fill="none"
           stroke="rgb(var(--wp-gauge))"
           strokeWidth="2"
+          className="hero-contour-1 origin-center opacity-[0.16]"
+        />
+        <path
+          d="M0,160 L60,150 L120,170 L180,120 L240,135 L300,80 L360,100 L420,55 L480,75 L540,35 L600,65 L660,30 L720,50 L780,20 L840,45 L900,15 L960,40 L1020,25 L1080,50 L1140,30 L1200,55"
+          fill="none"
+          stroke="rgb(var(--wp-accent))"
+          strokeWidth="2"
+          className="hero-contour-2 origin-center opacity-[0.12]"
+        />
+        <path
+          d="M0,300 L60,290 L120,305 L180,270 L240,280 L300,235 L360,250 L420,210 L480,225 L540,195 L600,220 L660,190 L720,205 L780,175 L840,195 L900,170 L960,190 L1020,178 L1080,198 L1140,182 L1200,200"
+          fill="none"
+          stroke="rgb(var(--wp-ink-muted))"
+          strokeWidth="1.5"
+          className="hero-contour-3 origin-center opacity-[0.1]"
         />
       </svg>
 

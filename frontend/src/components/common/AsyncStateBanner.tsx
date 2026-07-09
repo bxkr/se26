@@ -1,6 +1,7 @@
 import { strings } from "../../lib/strings";
 import { ApiError } from "../../api/errors";
 import { Button } from "./Button";
+import { BarographSpinner } from "./BarographSpinner";
 
 interface AsyncStateBannerProps {
   isFetching: boolean;
@@ -28,10 +29,7 @@ export function AsyncStateBanner({ isFetching, error, onRetry }: AsyncStateBanne
   if (isFetching) {
     return (
       <div className="flex items-center gap-3 rounded-md border border-accent/30 bg-accent/10 px-4 py-3 text-sm text-accent">
-        <span
-          className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-accent border-t-transparent"
-          aria-hidden
-        />
+        <BarographSpinner />
         <span>{strings.async.pending}</span>
       </div>
     );

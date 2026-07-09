@@ -93,3 +93,54 @@ body {
     repeating-linear-gradient(to right, rgb(var(--wp-border) / 0.35) 0, rgb(var(--wp-border) / 0.35) 1px, transparent 1px, transparent 24px),
     repeating-linear-gradient(to bottom, rgb(var(--wp-border) / 0.35) 0, rgb(var(--wp-border) / 0.35) 1px, transparent 1px, transparent 24px);
 }
+
+/* Pending-state motif: a pen tracing a barograph line, not a generic
+   spinner — the dash "travels" along the path instead of the path itself
+   rotating. Uses pathLength=1 on the SVG path so this works regardless of
+   the path's actual geometry. */
+@keyframes barograph-trace {
+  from {
+    stroke-dashoffset: 2;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.animate-barograph {
+  animation: barograph-trace 1.6s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-barograph {
+    animation: none;
+  }
+}
+
+/* Slow ambient sway for the landing hero's isobar-style contour lines —
+   an idle instrument reading, not a loop that draws attention to itself. */
+@keyframes drift-x {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(-24px);
+  }
+}
+.hero-contour-1 {
+  animation: drift-x 16s ease-in-out infinite;
+}
+.hero-contour-2 {
+  animation: drift-x 20s ease-in-out infinite -4s;
+}
+.hero-contour-3 {
+  animation: drift-x 24s ease-in-out infinite -9s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-contour-1,
+  .hero-contour-2,
+  .hero-contour-3 {
+    animation: none;
+  }
+}

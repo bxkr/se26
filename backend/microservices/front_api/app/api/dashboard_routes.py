@@ -64,6 +64,11 @@ async def metrics_model(payload: MetricsModelRequest, request: Request) -> JSONR
     return await _cached_proxy_post(request, "/metrics/model", payload.model_dump(by_alias=True))
 
 
+@router.post("/metrics/model/daily")
+async def metrics_model_daily(payload: MetricsModelRequest, request: Request) -> JSONResponse:
+    return await _cached_proxy_post(request, "/metrics/model/daily", payload.model_dump(by_alias=True))
+
+
 @router.get("/stations/search")
 async def stations_search(q: str, request: Request) -> JSONResponse:
     regions_client = request.app.state.regions_client
