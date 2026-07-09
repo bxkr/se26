@@ -47,7 +47,7 @@ export function ExplorerPage() {
   return (
     <PageContainer>
       <div className="mb-6 flex flex-col gap-4">
-        <h1 className="text-xl font-semibold text-ink">{strings.explorer.title}</h1>
+        <h1 className="font-display text-xl font-semibold text-ink">{strings.explorer.title}</h1>
         <div className="flex flex-wrap items-end gap-6">
           <div className="w-72">
             <RegionStationPicker

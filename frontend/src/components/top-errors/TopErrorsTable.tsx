@@ -1,5 +1,6 @@
 import { DataTable, type DataTableColumn } from "../common/DataTable";
 import { SeverityCell } from "../common/SeverityCell";
+import { StationTag } from "../common/StationTag";
 import { strings } from "../../lib/strings";
 import { ERROR_FIELD_LABEL } from "../../lib/errorFields";
 import type { ErrorFieldKey, ForecastErrorRow } from "../../types/dashboard";
@@ -29,11 +30,7 @@ export function TopErrorsTable({ rows, rankedMetric, onRowClick }: TopErrorsTabl
     {
       key: "wmo_index",
       header: strings.topErrors.columns.wmoIndex,
-      render: (r) => (
-        <span className="font-mono">
-          {r.station_name ? `${r.station_name} (${r.wmo_index})` : r.wmo_index}
-        </span>
-      ),
+      render: (r) => <StationTag name={r.station_name} wmoIndex={r.wmo_index} />,
       sortValue: (r) => r.wmo_index,
     },
     {

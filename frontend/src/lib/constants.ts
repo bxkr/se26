@@ -9,6 +9,12 @@
 export const REQUEST_MIN_DATE = "2022-01-01";
 export const REQUEST_MAX_DATE = "2026-06-30";
 
+// Mirrors front_api's FRONT_API_MAX_REQUEST_RANGE_DAYS default (see
+// backend/microservices/front_api/app/config.py) — keeps the picker from
+// ever producing a range the API will reject with 400 VALIDATION_ERROR.
+// Client-side clamp only; the API is still the source of truth.
+export const MAX_REQUEST_RANGE_DAYS = 180;
+
 // Pages default their date-range pickers to "last 30 days" — anchored to
 // REQUEST_MAX_DATE rather than `new Date()` so the default stays valid even
 // when the system clock is past REQUEST_MAX_DATE.

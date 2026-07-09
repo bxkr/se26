@@ -34,5 +34,26 @@ class Config:
     DEMO_USERNAME = os.getenv("FRONT_API_DEMO_USERNAME", "demo")
     DEMO_PASSWORD = os.getenv("FRONT_API_DEMO_PASSWORD", "demo12345")
 
+    # Abuse protection. General limit covers every request past this point
+    # (identified by user id once authenticated, IP before that); the login
+    # limit is deliberately tighter and IP-only since it guards credential
+    # stuffing / brute force before any session exists. MAX_REQUEST_RANGE_DAYS
+    # rejects oversized date ranges here, before they reach analytics_api/
+    # ClickHouse or trigger a Kafka backfill — analytics_api's own
+    # ANALYTICS_MAX_REQUEST_DAYS (365) is a much looser backstop, not the
+    # primary guard.
+    RATE_LIMIT_REQUESTS = int(os.getenv("FRONT_API_RATE_LIMIT_REQUESTS", "60"))
+    RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("FRONT_API_RATE_LIMIT_WINDOW_SECONDS", "60"))
+
+    LOGIN_RATE_LIMIT_REQUESTS = int(os.getenv("FRONT_API_LOGIN_RATE_LIMIT_REQUESTS", "10"))
+    LOGIN_RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("FRONT_API_LOGIN_RATE_LIMIT_WINDOW_SECONDS", "300"))
+
+    # Kept generous enough (well under analytics_api's 365-day backstop) that
+    # legitimate exploration in the frontend's date pickers never hits this —
+    # see MAX_REQUEST_RANGE_DAYS in frontend/src/lib/constants.ts, which
+    # mirrors this default to pre-clamp the UI instead of round-tripping a
+    # 400.
+    MAX_REQUEST_RANGE_DAYS = int(os.getenv("FRONT_API_MAX_REQUEST_RANGE_DAYS", "180"))
+
 
 config = Config()

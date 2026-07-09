@@ -53,11 +53,11 @@ export function ExplorerCharts({ rows }: ExplorerChartsProps) {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="rounded-lg border border-border bg-surface p-4">
+      <div className="rounded-md border border-border bg-surface p-4">
         <h3 className="mb-2 text-sm font-medium text-ink-secondary">{strings.explorer.actualVsForecast}</h3>
         <LineChart series={buildSeries(rows, SIGNED_FIELDS)} />
       </div>
-      <div className="rounded-lg border border-border bg-surface p-4">
+      <div className="rounded-md border border-border bg-surface p-4">
         <h3 className="mb-2 text-sm font-medium text-ink-secondary">{strings.explorer.errorOverTime}</h3>
         <LineChart series={buildSeries(rows, ABS_FIELDS)} />
       </div>

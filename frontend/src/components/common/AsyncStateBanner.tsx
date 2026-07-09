@@ -1,4 +1,5 @@
 import { strings } from "../../lib/strings";
+import { ApiError } from "../../api/errors";
 import { Button } from "./Button";
 
 interface AsyncStateBannerProps {
@@ -7,11 +8,16 @@ interface AsyncStateBannerProps {
   onRetry: () => void;
 }
 
+function describeError(error: Error): string {
+  if (error instanceof ApiError && error.code === "RATE_LIMITED") return strings.async.rateLimited;
+  return error.message || strings.async.failed;
+}
+
 export function AsyncStateBanner({ isFetching, error, onRetry }: AsyncStateBannerProps) {
   if (error) {
     return (
       <div className="flex items-center justify-between gap-4 rounded-md border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
-        <span>{error.message || strings.async.failed}</span>
+        <span>{describeError(error)}</span>
         <Button variant="secondary" onClick={onRetry}>
           {strings.async.retry}
         </Button>

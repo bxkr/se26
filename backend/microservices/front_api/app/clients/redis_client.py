@@ -9,6 +9,7 @@ from app.config import config
 
 CACHE_PREFIX = "cache:"
 REFRESH_PREFIX = "refresh:"
+RATE_LIMIT_PREFIX = "ratelimit:"
 
 
 class RedisClient:
@@ -42,3 +43,16 @@ class RedisClient:
 
     async def revoke_refresh_token(self, jti: str) -> None:
         await self._client.delete(f"{REFRESH_PREFIX}{jti}")
+
+    # ---- rate limiting ----------------------------------------------------
+
+    async def hit_rate_limit(self, scope: str, identity: str, *, limit: int, window_seconds: int) -> bool:
+        """Fixed-window counter. Returns True if the caller is over `limit`
+        for this window. A count-1/expire race can let a burst spanning the
+        increment briefly exceed `limit` by a request or two — acceptable
+        for abuse throttling, not a hard quota."""
+        key = f"{RATE_LIMIT_PREFIX}{scope}:{identity}"
+        count = await self._client.incr(key)
+        if count == 1:
+            await self._client.expire(key, window_seconds)
+        return count > limit

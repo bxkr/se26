@@ -22,6 +22,8 @@ export function LoginPage() {
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
         setError(strings.login.invalid);
+      } else if (err instanceof ApiError && err.status === 429) {
+        setError(strings.login.rateLimited);
       } else {
         setError(strings.login.genericError);
       }
@@ -29,12 +31,12 @@ export function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-page px-4">
+    <div className="chart-grid-paper flex min-h-screen flex-col items-center justify-center gap-6 bg-page px-4">
       <form
         onSubmit={handleSubmit}
-        className="flex w-full max-w-sm flex-col gap-4 rounded-lg border border-border bg-surface p-6"
+        className="flex w-full max-w-sm flex-col gap-4 rounded-md border border-border border-t-2 border-t-gauge/70 bg-surface p-6"
       >
-        <h1 className="text-lg font-semibold text-ink">{strings.login.title}</h1>
+        <h1 className="font-display text-lg font-semibold text-ink">{strings.login.title}</h1>
         <Input
           label={strings.login.username}
           value={username}

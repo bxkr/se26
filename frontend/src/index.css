@@ -3,8 +3,9 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --font-mono: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+  --font-display: "Space Grotesk", system-ui, sans-serif;
+  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 
   --color-surface: rgb(var(--wp-surface));
   --color-page: rgb(var(--wp-page));
@@ -14,42 +15,51 @@
   --color-border: rgb(var(--wp-border));
   --color-accent: rgb(var(--wp-accent));
   --color-accent-ink: rgb(var(--wp-accent-ink));
+  --color-gauge: rgb(var(--wp-gauge));
+  --color-gauge-ink: rgb(var(--wp-gauge-ink));
   --color-danger: rgb(var(--wp-danger));
   --color-good: rgb(var(--wp-good));
   --color-warning: rgb(var(--wp-warning));
   --color-serious: rgb(var(--wp-serious));
 }
 
-/* WeatherPulse palette — derived from the validated dataviz reference palette
-   (blue = accent/sequential/categorical-1, red = danger/critical) */
+/* WeatherPulse palette — "synoptic instrument panel": a meteorological
+   station's own materials (barographs, isobar charts, brass gauges) rather
+   than a generic product-dashboard blue. Accent = instrument-teal (live
+   readouts, interactive), gauge = brass (deviation/error emphasis, the
+   page's one signature color, used sparingly). */
 :root {
-  --wp-page: 249 249 247;
+  --wp-page: 238 241 243;
   --wp-surface: 255 255 255;
-  --wp-ink: 11 11 11;
-  --wp-ink-secondary: 82 81 78;
-  --wp-ink-muted: 137 135 129;
-  --wp-border: 225 224 217;
-  --wp-accent: 42 120 214;
+  --wp-ink: 15 20 25;
+  --wp-ink-secondary: 71 84 93;
+  --wp-ink-muted: 122 134 143;
+  --wp-border: 210 217 222;
+  --wp-accent: 31 122 148;
   --wp-accent-ink: 255 255 255;
-  --wp-danger: 208 59 59;
-  --wp-good: 12 163 12;
-  --wp-warning: 250 178 25;
-  --wp-serious: 236 131 90;
+  --wp-gauge: 158 104 30;
+  --wp-gauge-ink: 255 255 255;
+  --wp-danger: 190 60 55;
+  --wp-good: 45 128 63;
+  --wp-warning: 168 122 25;
+  --wp-serious: 175 84 38;
 }
 
 .dark {
-  --wp-page: 13 13 13;
-  --wp-surface: 26 26 25;
-  --wp-ink: 255 255 255;
-  --wp-ink-secondary: 195 194 183;
-  --wp-ink-muted: 137 135 129;
-  --wp-border: 44 44 42;
-  --wp-accent: 57 135 229;
-  --wp-accent-ink: 13 13 13;
-  --wp-danger: 230 103 103;
-  --wp-good: 12 163 12;
-  --wp-warning: 250 178 25;
-  --wp-serious: 236 131 90;
+  --wp-page: 15 19 24;
+  --wp-surface: 22 28 35;
+  --wp-ink: 232 236 238;
+  --wp-ink-secondary: 163 174 182;
+  --wp-ink-muted: 103 116 126;
+  --wp-border: 40 50 59;
+  --wp-accent: 79 173 199;
+  --wp-accent-ink: 8 14 18;
+  --wp-gauge: 200 145 66;
+  --wp-gauge-ink: 24 16 4;
+  --wp-danger: 214 92 87;
+  --wp-good: 106 173 118;
+  --wp-warning: 216 168 79;
+  --wp-serious: 214 121 74;
 }
 
 html,
@@ -72,4 +82,14 @@ body {
    the calendar picker indicator) in a light-on-dark palette. */
 .dark input[type="date"] {
   color-scheme: dark;
+}
+
+/* Millimeter-paper backdrop for chart/gauge panels — the one recurring
+   texture that ties KPI tiles, sparklines and line charts back to a
+   barograph strip. Kept faint and used only behind data, never as page
+   chrome. */
+.chart-grid-paper {
+  background-image:
+    repeating-linear-gradient(to right, rgb(var(--wp-border) / 0.35) 0, rgb(var(--wp-border) / 0.35) 1px, transparent 1px, transparent 24px),
+    repeating-linear-gradient(to bottom, rgb(var(--wp-border) / 0.35) 0, rgb(var(--wp-border) / 0.35) 1px, transparent 1px, transparent 24px);
 }

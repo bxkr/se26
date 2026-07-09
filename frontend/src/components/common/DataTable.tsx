@@ -50,7 +50,7 @@ export function DataTable<T>({ columns, rows, rowKey, onRowClick, emptyMessage }
   }
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-border">
+    <div className="overflow-x-auto rounded-md border border-border">
       <table className="w-full border-collapse text-sm">
         <thead>
           <tr className="border-b border-border bg-page">

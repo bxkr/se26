@@ -42,7 +42,7 @@ export function TopErrorsPage() {
   return (
     <PageContainer>
       <div className="mb-6 flex flex-col gap-4">
-        <h1 className="text-xl font-semibold text-ink">{strings.topErrors.title}</h1>
+        <h1 className="font-display text-xl font-semibold text-ink">{strings.topErrors.title}</h1>
         <div className="flex flex-wrap items-end gap-4">
           <DateRangePicker from={draftRange.from} to={draftRange.to} onChange={setDraftRange} showForecastHint />
           <MetricSelect value={draftMetric} onChange={setDraftMetric} />

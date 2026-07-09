@@ -17,6 +17,7 @@ from app.clients.postgres_client import PostgresClient
 from app.clients.redis_client import RedisClient
 from app.clients.regions_client import RegionsClient
 from app.config import config
+from app.middleware.rate_limit import RateLimitMiddleware
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s - %(message)s")
 logger = logging.getLogger("front_api")
@@ -59,6 +60,10 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="front_api", lifespan=lifespan)
 
+# Order matters: Starlette wraps middleware so the last one added is
+# outermost. RateLimitMiddleware is added first (inner) so CORSMiddleware
+# (outer) still attaches CORS headers to 429 responses.
+app.add_middleware(RateLimitMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=config.CORS_ORIGINS,
@@ -76,7 +81,14 @@ app.include_router(dashboard_router)
 async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
     first_error = exc.errors()[0] if exc.errors() else {}
     field = ".".join(str(part) for part in first_error.get("loc", []) if part != "body")
-    message = f"Field '{field}' {first_error.get('msg', 'is invalid')}" if field else "Invalid request body"
+    raw_msg = first_error.get("msg", "")
+    if field:
+        message = f"Field '{field}' {raw_msg or 'is invalid'}"
+    else:
+        # model-level validators (e.g. date-range checks) have no `loc`, so
+        # `field` is empty here — fall back to the validator's own message
+        # instead of a generic "Invalid request body" that discards it.
+        message = raw_msg.removeprefix("Value error, ") if raw_msg else "Invalid request body"
     return JSONResponse(
         status_code=400,
         content={"error": {"code": "VALIDATION_ERROR", "message": message}},

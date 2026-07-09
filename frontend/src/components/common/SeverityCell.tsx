@@ -13,12 +13,12 @@ export function SeverityCell({ value, maxAbs }: SeverityCellProps) {
       <span className="w-16 font-mono text-xs tabular-nums text-ink">
         {value === null ? "—" : value.toFixed(2)}
       </span>
-      <div className="h-2 flex-1 min-w-10 overflow-hidden rounded-full bg-border/50">
+      <div className="h-1.5 flex-1 min-w-10 overflow-hidden rounded-[1px] bg-border/50">
         <div
-          className="h-full rounded-full"
+          className="h-full"
           style={{
             width: `${intensity * 100}%`,
-            backgroundColor: `color-mix(in oklab, rgb(var(--wp-accent)), rgb(var(--wp-danger)) ${Math.round(intensity * 100)}%)`,
+            backgroundColor: `color-mix(in oklab, rgb(var(--wp-gauge)), rgb(var(--wp-danger)) ${Math.round(intensity * 100)}%)`,
           }}
         />
       </div>

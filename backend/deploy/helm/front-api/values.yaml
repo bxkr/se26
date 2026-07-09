@@ -40,8 +40,21 @@ jwt:
 cache:
   ttlSeconds: 300
 
+rateLimit:
+  requests: 60
+  windowSeconds: 60
+  loginRequests: 10
+  loginWindowSeconds: 300
+
+maxRequestRangeDays: 180
+
 cors:
-  origins: "https://se26.bxkr.org,http://localhost:3000"
+  # frontend doesn't run in this k8s cluster (no Helm chart/ingress for it
+  # here) — it's on Firebase Hosting (project se26-frontend,
+  # frontend/firebase.json), served both from the default *.web.app URL and
+  # the custom domain se26.bxkr.org. Keep both in sync with whatever origins
+  # actually serve the built frontend.
+  origins: "https://se26.bxkr.org,https://se26-frontend.web.app,http://localhost:3000"
 
 cookie:
   secure: true

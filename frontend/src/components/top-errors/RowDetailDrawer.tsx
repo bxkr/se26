@@ -2,6 +2,7 @@ import { ERROR_FIELDS } from "../../lib/errorFields";
 import { strings } from "../../lib/strings";
 import type { ForecastErrorRow } from "../../types/dashboard";
 import { CloseIcon } from "../common/Icons";
+import { StationTag } from "../common/StationTag";
 
 interface RowDetailDrawerProps {
   row: ForecastErrorRow;
@@ -15,10 +16,8 @@ export function RowDetailDrawer({ row, onClose }: RowDetailDrawerProps) {
         className="h-full w-full max-w-sm overflow-y-auto border-l border-border bg-surface p-6"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="font-mono text-lg font-semibold text-ink">
-            {row.station_name ? `${row.station_name} (${row.wmo_index})` : row.wmo_index}
-          </h2>
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <StationTag name={row.station_name} wmoIndex={row.wmo_index} className="text-sm" />
           <button onClick={onClose} aria-label={strings.common.close} className="text-ink-muted hover:text-ink">
             <CloseIcon />
           </button>

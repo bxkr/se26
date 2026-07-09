@@ -17,13 +17,14 @@ function formatValue(value: number | null | undefined, unit?: string): string {
 
 export function KpiTile({ label, value, unit, trend, isLoading }: KpiTileProps) {
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-4">
-      <span className="text-xs font-medium uppercase tracking-wide text-ink-muted">{label}</span>
-      <div className="flex items-end justify-between gap-2">
+    <div className="relative flex flex-col gap-2.5 rounded-md border border-border border-t-2 border-t-gauge/70 bg-surface p-4">
+      <span aria-hidden className="absolute right-3 top-3 h-1.5 w-1.5 rounded-full bg-gauge/70" />
+      <span className="pr-4 font-mono text-[11px] uppercase tracking-widest text-ink-muted">{label}</span>
+      <div className="flex items-end justify-between gap-3">
         {isLoading ? (
-          <Skeleton className="h-7 w-16" />
+          <Skeleton className="h-8 w-20" />
         ) : (
-          <span className="font-mono text-2xl font-semibold text-ink">
+          <span className="font-display text-2xl font-semibold tabular-nums text-ink">
             {formatValue(value, unit)}
           </span>
         )}

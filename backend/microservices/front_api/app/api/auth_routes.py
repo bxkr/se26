@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from app.auth.dependencies import ACCESS_TOKEN_COOKIE, REFRESH_TOKEN_COOKIE, get_current_user
 from app.auth.security import create_access_token, new_refresh_jti, verify_password
 from app.config import config
+from app.middleware.rate_limit import client_ip
 from app.schemas import LoginRequest
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -12,6 +13,10 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 def _unauthorized(message: str) -> HTTPException:
     return HTTPException(status_code=401, detail={"error": {"code": "UNAUTHORIZED", "message": message}})
+
+
+def _too_many_requests(message: str) -> HTTPException:
+    return HTTPException(status_code=429, detail={"error": {"code": "RATE_LIMITED", "message": message}})
 
 
 def _set_auth_cookies(response: Response, *, access_token: str, refresh_token: str) -> None:
@@ -51,6 +56,16 @@ async def _issue_tokens(request: Request, response: Response, *, user_id: str, u
 
 @router.post("/login")
 async def login(payload: LoginRequest, request: Request, response: Response) -> dict:
+    redis_client = request.app.state.redis_client
+    over_limit = await redis_client.hit_rate_limit(
+        "login",
+        client_ip(request),
+        limit=config.LOGIN_RATE_LIMIT_REQUESTS,
+        window_seconds=config.LOGIN_RATE_LIMIT_WINDOW_SECONDS,
+    )
+    if over_limit:
+        raise _too_many_requests("too many login attempts, try again later")
+
     postgres = request.app.state.postgres_client
     row = await postgres.get_user_by_username(payload.username)
     if row is None or not row["is_active"] or not verify_password(payload.password, row["password_hash"]):

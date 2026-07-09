@@ -25,7 +25,7 @@ export function DashboardPage() {
   return (
     <PageContainer>
       <div className="mb-6 flex flex-col gap-4">
-        <h1 className="text-xl font-semibold text-ink">{strings.dashboard.title}</h1>
+        <h1 className="font-display text-xl font-semibold text-ink">{strings.dashboard.title}</h1>
         <div className="flex flex-wrap items-end gap-3">
           <DateRangePicker from={draftRange.from} to={draftRange.to} onChange={setDraftRange} showForecastHint />
           <Button onClick={() => setRange(draftRange)}>{strings.filters.apply}</Button>

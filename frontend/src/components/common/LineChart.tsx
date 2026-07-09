@@ -2,11 +2,13 @@ import { ParentSize } from "@visx/responsive";
 import { scaleLinear, scaleTime } from "@visx/scale";
 import { LinePath } from "@visx/shape";
 import { AxisBottom, AxisLeft } from "@visx/axis";
-import { GridRows } from "@visx/grid";
+import { GridRows, GridColumns } from "@visx/grid";
 import { curveMonotoneX } from "@visx/curve";
 import { Group } from "@visx/group";
 import { useTooltip, TooltipWithBounds, defaultStyles } from "@visx/tooltip";
 import { useMemo, useCallback } from "react";
+
+const AXIS_LABEL_PROPS = { fill: "rgb(var(--wp-ink-muted))", fontSize: 10, fontFamily: "var(--font-mono)" };
 
 export interface LineSeries {
   key: string;
@@ -89,14 +91,22 @@ function LineChartInner({ series, width, height }: LineChartProps & { width: num
 
   return (
     <div className="relative">
-      <svg width={width} height={height}>
+      <svg width={width} height={height} className="chart-grid-paper">
         <Group left={margin.left} top={margin.top}>
-          <GridRows
-            scale={yScale}
-            width={innerWidth}
-            stroke="rgb(var(--wp-border))"
-            strokeDasharray="2,2"
-          />
+          <GridRows scale={yScale} width={innerWidth} stroke="rgb(var(--wp-border))" strokeOpacity={0.6} />
+          <GridColumns scale={xScale} height={innerHeight} stroke="rgb(var(--wp-border))" strokeOpacity={0.35} />
+          {tooltipData && (
+            <line
+              x1={tooltipLeft}
+              x2={tooltipLeft}
+              y1={0}
+              y2={innerHeight}
+              stroke="rgb(var(--wp-gauge))"
+              strokeWidth={1}
+              strokeDasharray="3,3"
+              pointerEvents="none"
+            />
+          )}
           {series.map((s) => (
             <LinePath
               key={s.key}
@@ -112,14 +122,14 @@ function LineChartInner({ series, width, height }: LineChartProps & { width: num
             scale={yScale}
             stroke="rgb(var(--wp-border))"
             tickStroke="rgb(var(--wp-border))"
-            tickLabelProps={{ fill: "rgb(var(--wp-ink-muted))", fontSize: 10 }}
+            tickLabelProps={AXIS_LABEL_PROPS}
           />
           <AxisBottom
             top={innerHeight}
             scale={xScale}
             stroke="rgb(var(--wp-border))"
             tickStroke="rgb(var(--wp-border))"
-            tickLabelProps={{ fill: "rgb(var(--wp-ink-muted))", fontSize: 10 }}
+            tickLabelProps={AXIS_LABEL_PROPS}
           />
           <rect
             width={innerWidth}
@@ -131,10 +141,10 @@ function LineChartInner({ series, width, height }: LineChartProps & { width: num
         </Group>
       </svg>
       {series.length > 1 && (
-        <div className="mt-2 flex flex-wrap gap-3 text-xs text-ink-secondary">
+        <div className="mt-2 flex flex-wrap gap-4 font-mono text-xs uppercase tracking-wide text-ink-secondary">
           {series.map((s) => (
             <span key={s.key} className="flex items-center gap-1.5">
-              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: s.color }} />
+              <span className="h-0.5 w-3" style={{ backgroundColor: s.color }} />
               {s.label}
             </span>
           ))}
@@ -148,7 +158,8 @@ function LineChartInner({ series, width, height }: LineChartProps & { width: num
             ...defaultStyles,
             background: "rgb(var(--wp-surface))",
             color: "rgb(var(--wp-ink))",
-            border: "1px solid rgb(var(--wp-border))",
+            border: "1px solid rgb(var(--wp-gauge))",
+            borderRadius: 2,
           }}
         >
           <div className="font-mono text-xs">

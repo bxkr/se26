@@ -10,14 +10,16 @@ import { SunIcon, MoonIcon, MenuIcon, CloseIcon } from "../common/Icons";
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
   clsx(
-    "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-    isActive ? "bg-accent/15 text-accent" : "text-ink-secondary hover:text-ink hover:bg-page",
+    "relative py-1.5 font-mono text-xs uppercase tracking-wider transition-colors",
+    isActive
+      ? "text-accent after:absolute after:inset-x-0 after:-bottom-[13px] after:h-0.5 after:bg-accent"
+      : "text-ink-secondary hover:text-ink",
   );
 
 const mobileNavLinkClass = ({ isActive }: { isActive: boolean }) =>
   clsx(
-    "rounded-md px-3 py-2 text-sm font-medium transition-colors",
-    isActive ? "bg-accent/15 text-accent" : "text-ink-secondary hover:text-ink hover:bg-page",
+    "border-l-2 px-3 py-2 font-mono text-xs uppercase tracking-wider transition-colors",
+    isActive ? "border-accent text-accent" : "border-transparent text-ink-secondary hover:text-ink",
   );
 
 export function TopNav() {
@@ -68,26 +70,29 @@ export function TopNav() {
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-surface/95 backdrop-blur">
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3">
-        <div className="flex items-center gap-6">
+        <div className="flex items-center gap-7">
           <button
             onClick={() => navigate("/dashboard")}
-            className="flex items-center gap-2 font-semibold tracking-tight text-ink"
+            className="flex items-center gap-2.5 font-display text-lg font-semibold tracking-tight text-ink"
           >
             <img src="/favicon.svg" alt="" className="h-6 w-6" />
             {strings.app.name}
+            <span className="hidden rounded-sm border border-border px-1.5 py-0.5 font-mono text-[10px] font-normal tracking-widest text-ink-muted sm:inline">
+              {strings.nav.stationLogTag}
+            </span>
           </button>
-          <nav className="hidden items-center gap-1 md:flex">{navLinks}</nav>
+          <nav className="hidden items-center gap-6 md:flex">{navLinks}</nav>
         </div>
         <div className="flex items-center gap-3">
           {isDemo && (
-            <span className="hidden rounded-full bg-warning/15 px-2.5 py-0.5 text-xs font-medium text-warning sm:inline-block">
+            <span className="hidden rounded-sm border border-warning/40 px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest text-warning sm:inline-block">
               {strings.nav.demoBadge}
             </span>
           )}
           <button
             onClick={toggleTheme}
             aria-label={strings.nav.theme}
-            className="rounded-md border border-border p-1.5 text-ink-secondary hover:text-ink"
+            className="rounded-sm border border-border p-1.5 text-ink-secondary hover:text-ink"
           >
             {theme === "dark" ? <SunIcon /> : <MoonIcon />}
           </button>
@@ -99,7 +104,7 @@ export function TopNav() {
             onClick={() => setMenuOpen((v) => !v)}
             aria-label={strings.nav.menu}
             aria-expanded={menuOpen}
-            className="rounded-md border border-border p-1.5 text-ink-secondary hover:text-ink md:hidden"
+            className="rounded-sm border border-border p-1.5 text-ink-secondary hover:text-ink md:hidden"
           >
             {menuOpen ? <CloseIcon /> : <MenuIcon />}
           </button>

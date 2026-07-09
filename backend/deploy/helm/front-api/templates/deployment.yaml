@@ -51,6 +51,16 @@ spec:
               value: {{ .Values.cookie.secure | quote }}
             - name: FRONT_API_DEMO_USERNAME
               value: {{ .Values.demo.username | quote }}
+            - name: FRONT_API_RATE_LIMIT_REQUESTS
+              value: {{ .Values.rateLimit.requests | quote }}
+            - name: FRONT_API_RATE_LIMIT_WINDOW_SECONDS
+              value: {{ .Values.rateLimit.windowSeconds | quote }}
+            - name: FRONT_API_LOGIN_RATE_LIMIT_REQUESTS
+              value: {{ .Values.rateLimit.loginRequests | quote }}
+            - name: FRONT_API_LOGIN_RATE_LIMIT_WINDOW_SECONDS
+              value: {{ .Values.rateLimit.loginWindowSeconds | quote }}
+            - name: FRONT_API_MAX_REQUEST_RANGE_DAYS
+              value: {{ .Values.maxRequestRangeDays | quote }}
           ports:
             - name: http
               containerPort: 8000

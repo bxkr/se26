@@ -80,7 +80,12 @@ JWT access+refresh в httpOnly cookie — фронт **не хранит и не
 {"error": {"code": "VALIDATION_ERROR", "message": "Field 'stations' is required"}}
 ```
 
-Коды: `VALIDATION_ERROR` (400), `UNAUTHORIZED` (401), `FORBIDDEN` (403), `NOT_FOUND` (404), `CONFLICT` (409, например занятый username при создании пользователя).
+Коды: `VALIDATION_ERROR` (400), `UNAUTHORIZED` (401), `FORBIDDEN` (403), `NOT_FOUND` (404), `CONFLICT` (409, например занятый username при создании пользователя), `RATE_LIMITED` (429, см. ниже).
+
+### Защита от вандальных запросов
+
+- **Лимит диапазона дат**: `from`/`to` в `/regions/forecast-errors`, `/stations/forecast-errors`, `/errors/top`, `/metrics/model` не могут охватывать больше `FRONT_API_MAX_REQUEST_RANGE_DAYS` дней (по умолчанию 180) — превышение отдаёт `400 VALIDATION_ERROR` ещё на уровне `front_api`, до похода в `analytics_api`/ClickHouse/Kafka-дозапрос. Отдельный, более широкий потолок `ANALYTICS_MAX_REQUEST_DAYS` (365) у `analytics_api` — вторая линия защиты, не основная.
+- **Rate limit**: общий лимит `FRONT_API_RATE_LIMIT_REQUESTS` запросов за `FRONT_API_RATE_LIMIT_WINDOW_SECONDS` (по умолчанию 60/60с) на весь API, ключ — `user_id` после логина, иначе IP (`X-Forwarded-For`, если есть, иначе `request.client.host`). У `POST /auth/login` — отдельный, более жёсткий лимит по IP: `FRONT_API_LOGIN_RATE_LIMIT_REQUESTS`/`FRONT_API_LOGIN_RATE_LIMIT_WINDOW_SECONDS` (по умолчанию 10/300с), защита от брутфорса пароля ещё до появления сессии. Превышение любого из лимитов — `429 RATE_LIMITED`; фронту стоит показывать сообщение и не ретраить автоматически (никакого `Retry-After` пока не отдаётся).
 
 ## 6. CORS
 

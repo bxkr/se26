@@ -75,7 +75,9 @@ analytics_api (consume weather.dm.ready / weather.pipeline.failed)
 - **Postgres** — пользователи и служебные данные `front_api`.
 - **Redis** — кэш и статусы асинхронных запросов (`request_id → status`).
 - **Airflow** — оркестрация ETL-джобы (`dm_pipeline`).
-- **Helm-чарты** (`backend/deploy/helm`) — деплой всего стека в Kubernetes.
+- **Helm-чарты** (`backend/deploy/helm`) — деплой бэкенд-стека в Kubernetes. `frontend` в этот кластер не
+  деплоится — статика хостится на **Firebase Hosting** (`frontend/firebase.json`, проект `se26-frontend`,
+  кастомный домен `se26.bxkr.org`): `npm run build && firebase deploy --only hosting`.
 
 ## Как запустить локально
 

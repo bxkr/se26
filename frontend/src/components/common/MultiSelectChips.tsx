@@ -28,7 +28,7 @@ export function MultiSelectChips({ options, selected, onChange, label }: MultiSe
               type="button"
               onClick={() => toggle(option)}
               className={clsx(
-                "rounded-full border px-3 py-1 font-mono text-xs transition-colors",
+                "rounded-sm border px-3 py-1 font-mono text-xs uppercase tracking-wide transition-colors",
                 active
                   ? "border-accent bg-accent/15 text-accent"
                   : "border-border bg-surface text-ink-secondary hover:border-ink-muted",

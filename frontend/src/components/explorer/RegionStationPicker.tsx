@@ -87,16 +87,16 @@ export function RegionStationPicker({ mode, onModeChange, selected, onChange }: 
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex gap-1 rounded-md border border-border p-1 text-sm">
+      <div className="flex gap-1 rounded-sm border border-border p-1 font-mono text-xs uppercase tracking-wide">
         <button
           onClick={() => onModeChange("region")}
-          className={`flex-1 rounded px-3 py-1 ${mode === "region" ? "bg-accent/15 text-accent" : "text-ink-secondary"}`}
+          className={`flex-1 rounded-sm px-3 py-1.5 ${mode === "region" ? "bg-accent/15 text-accent" : "text-ink-secondary"}`}
         >
           {strings.explorer.regions}
         </button>
         <button
           onClick={() => onModeChange("station")}
-          className={`flex-1 rounded px-3 py-1 ${mode === "station" ? "bg-accent/15 text-accent" : "text-ink-secondary"}`}
+          className={`flex-1 rounded-sm px-3 py-1.5 ${mode === "station" ? "bg-accent/15 text-accent" : "text-ink-secondary"}`}
         >
           {strings.explorer.stations}
         </button>
@@ -110,7 +110,7 @@ export function RegionStationPicker({ mode, onModeChange, selected, onChange }: 
           onKeyDown={handleKeyDown}
         />
         {matches.length > 0 && (
-          <ul className="absolute z-10 mt-1 max-h-64 w-full overflow-y-auto rounded-md border border-border bg-surface shadow-lg">
+          <ul className="absolute z-10 mt-1 max-h-64 w-full overflow-y-auto rounded-sm border border-border bg-surface shadow-lg">
             {mode === "region"
               ? regionMatches.map((r) => (
                   <li key={r.id}>
@@ -143,7 +143,7 @@ export function RegionStationPicker({ mode, onModeChange, selected, onChange }: 
           {selected.map((item) => (
             <span
               key={item}
-              className="flex items-center gap-1.5 rounded-full border border-accent bg-accent/15 px-3 py-1 font-mono text-xs text-accent"
+              className="flex items-center gap-1.5 border-l-2 border-accent bg-accent/5 py-1 pl-2.5 pr-2 font-mono text-xs text-accent"
             >
               {mode === "region"
                 ? regionName(item)
