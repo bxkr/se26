@@ -1,0 +1,76 @@
+# Install as: helm upgrade --install front-api . -n dm-pipeline
+# Image is built from backend/microservices/front_api/Dockerfile.
+
+image:
+  repository: cr.yandex/crpmc4ksa9bqvd59g3dm/dm-pipeline/front-api-image
+  tag: "latest"
+  pullPolicy: Always
+
+nameOverride: ""
+fullnameOverride: ""
+
+postgres:
+  host: postgres
+  port: "5432"
+  db: weather
+  user: weather
+  # Same dev-grade credential as the postgres chart's auth.password.
+  password: "weather"
+
+redis:
+  host: redis
+  port: "6379"
+
+analyticsApi:
+  url: "http://analytics-api:8000"
+
+regionsApi:
+  url: "http://regions-api:8000"
+
+jwt:
+  accessTokenTtlSeconds: 900
+  # Quoted: Helm's `quote` renders large plain ints like 1209600 in
+  # scientific notation (1.2096e+06) after Go's YAML round-trip — keep as a
+  # string in values.yaml to avoid that.
+  refreshTokenTtlSeconds: "1209600"
+  # Dev-grade secret, generated once for this deploy — rotate if this chart
+  # is ever reused beyond the course project.
+  secret: "yEuecUVHBGoOey6VSnsG_tSNKjnrY1VZ23L73hEs0aE"
+
+cache:
+  ttlSeconds: 300
+
+cors:
+  origins: "https://se26.bxkr.org,http://localhost:3000"
+
+cookie:
+  secure: true
+
+demo:
+  username: "demo"
+  password: "demo12345"
+
+ingress:
+  enabled: true
+  host: "api-se26.bxkr.org"
+  # Managed Let's Encrypt через Yandex Certificate Manager, DNS-challenge
+  # (CNAME _acme-challenge.api-se26.bxkr.org, по рекомендации Yandex Cloud —
+  # так будущие продления не потребуют повторного ручного DNS-шага).
+  # Выпущен 2026-07-08, действителен до 2026-10-06.
+  certificateId: "fpqliu5dlmsinvqrhjk4"
+  # Дедицированная группа (НЕ "example" — тот groupName уже занят двумя
+  # чужими живыми проектами в этом кластере, application/historical-data;
+  # попытка смёржиться в него вызвала deadlock в реконсиляции gwin, см.
+  # инцидент 2026-07-08 в плане iridescent-noodling-sunset.md). Отдельная
+  # группа = отдельный новый ALB/внешний IP, создаваемый с нуля, а не
+  # пересборка существующего роутера — конкретно этот код-путь deadlock
+  # не воспроизвёл.
+  groupName: "front-api"
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 300m
+    memory: 256Mi

@@ -1,0 +1,90 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "front-api.fullname" . }}
+  labels:
+    {{- include "front-api.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "front-api.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "front-api.labels" . | nindent 8 }}
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: front-api
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          envFrom:
+            - secretRef:
+                name: {{ include "front-api.fullname" . }}
+          env:
+            - name: POSTGRES_HOST
+              value: {{ .Values.postgres.host | quote }}
+            - name: POSTGRES_PORT
+              value: {{ .Values.postgres.port | quote }}
+            - name: POSTGRES_DB
+              value: {{ .Values.postgres.db | quote }}
+            - name: POSTGRES_USER
+              value: {{ .Values.postgres.user | quote }}
+            - name: REDIS_HOST
+              value: {{ .Values.redis.host | quote }}
+            - name: REDIS_PORT
+              value: {{ .Values.redis.port | quote }}
+            - name: ANALYTICS_API_URL
+              value: {{ .Values.analyticsApi.url | quote }}
+            - name: REGIONS_API_URL
+              value: {{ .Values.regionsApi.url | quote }}
+            - name: FRONT_API_ACCESS_TOKEN_TTL_SECONDS
+              value: {{ .Values.jwt.accessTokenTtlSeconds | quote }}
+            - name: FRONT_API_REFRESH_TOKEN_TTL_SECONDS
+              value: {{ .Values.jwt.refreshTokenTtlSeconds | quote }}
+            - name: FRONT_API_CACHE_TTL_SECONDS
+              value: {{ .Values.cache.ttlSeconds | quote }}
+            - name: FRONT_API_CORS_ORIGINS
+              value: {{ .Values.cors.origins | quote }}
+            - name: FRONT_API_COOKIE_SECURE
+              value: {{ .Values.cookie.secure | quote }}
+            - name: FRONT_API_DEMO_USERNAME
+              value: {{ .Values.demo.username | quote }}
+          ports:
+            - name: http
+              containerPort: 8000
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "front-api.fullname" . }}
+  labels:
+    {{- include "front-api.labels" . | nindent 4 }}
+spec:
+  # gwin/ALB routes directly to node ports (targets.type=Node), so a
+  # ClusterIP Service is rejected as an Ingress backend — confirmed via
+  # `kubectl describe ingress` error and by the fact that the two other
+  # working Ingress-backed services in this cluster (application,
+  # historical-data) are both NodePort too.
+  type: NodePort
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+  selector:
+    {{- include "front-api.selectorLabels" . | nindent 4 }}

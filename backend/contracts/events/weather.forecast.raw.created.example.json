@@ -2,7 +2,7 @@
   "event_id": "3b2e5d4a-6f1c-4a2d-9e0b-7c8a1f5d2e3b",
   "trace_id": "9a1f4c7e-3d2b-4e6a-8f1c-5b0d9e2a7c4f",
   "event_type": "weather.forecast.raw.created",
-  "source_name": "predict_fetcher",
+  "source_name": "forecast_fetcher",
   "bucket": "weather-raw",
   "object_keys": [
     "forecast/date=1960-01-01.json",

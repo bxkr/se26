@@ -19,6 +19,9 @@ kafka:
 s3:
   secretName: "weather-raw-s3"
 
+regionsApi:
+  url: "http://regions-api:8000"
+
 resources:
   requests:
     cpu: 100m

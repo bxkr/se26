@@ -62,11 +62,13 @@ async def lifespan(app: FastAPI):
         redis_client=redis_client,
         regions_client=regions_client,
     )
-    app.state.top_errors_service = TopErrorsService(clickhouse=clickhouse)
+    app.state.top_errors_service = TopErrorsService(clickhouse=clickhouse, regions_client=regions_client)
     app.state.model_metrics_service = ModelMetricsService(clickhouse=clickhouse)
 
     loop = asyncio.get_running_loop()
-    dm_handler = DmEventsHandler(redis_client=redis_client, clickhouse=clickhouse, loop=loop)
+    dm_handler = DmEventsHandler(
+        redis_client=redis_client, clickhouse=clickhouse, regions_client=regions_client, loop=loop
+    )
     kafka_consumer = KafkaConsumerClient.from_env(logger=logger)
 
     consumer_thread = threading.Thread(

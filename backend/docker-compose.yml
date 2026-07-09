@@ -138,6 +138,42 @@ services:
       - "8002:8000"
     restart: unless-stopped
 
+  front_api:
+    build:
+      context: ./microservices/front_api
+      dockerfile: Dockerfile
+    container_name: se26-front-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      analytics_api:
+        condition: service_started
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: weather
+      POSTGRES_USER: weather
+      POSTGRES_PASSWORD: weather
+
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+
+      ANALYTICS_API_URL: http://analytics_api:8000
+
+      FRONT_API_JWT_SECRET: dev-only-local-compose-secret
+      FRONT_API_ACCESS_TOKEN_TTL_SECONDS: "900"
+      FRONT_API_REFRESH_TOKEN_TTL_SECONDS: "1209600"
+      FRONT_API_CACHE_TTL_SECONDS: "300"
+      FRONT_API_CORS_ORIGINS: http://localhost:3000
+      FRONT_API_COOKIE_SECURE: "false"
+      FRONT_API_DEMO_USERNAME: demo
+      FRONT_API_DEMO_PASSWORD: demo12345
+    ports:
+      - "8003:8000"
+    restart: unless-stopped
+
   historical_fetcher:
     build:
       context: ./microservices/historical_fetcher
@@ -148,6 +184,10 @@ services:
         condition: service_healthy
       minio:
         condition: service_started
+      regions_api:
+        condition: service_started
+    environment:
+      REGIONS_API_URL: http://regions_api:8000
     ports:
       - "5050:5050"
     restart: unless-stopped

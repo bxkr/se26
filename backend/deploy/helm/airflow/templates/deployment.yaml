@@ -45,6 +45,25 @@ spec:
             # affected, doesn't unpause one a human paused on purpose.
             - name: AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION
               value: "False"
+            # Was throttled to 3/3/3 after a 2026-07-08 incident: dm_trigger
+            # used to fan out one DAG run per day, so a wide date-range
+            # request could queue hundreds of concurrent spark-submit JVMs
+            # (each its own local[2] JVM) and OOMKilled the 5Gi pod. After
+            # batching dm_trigger/s3_to_clickhouse.py to one DAG run per
+            # manifest (whole date_from..date_to range in one JVM — see
+            # data/pipeline_flow.md, "Батчинг dm_pipeline"), a single user
+            # request tops out at 2 DAG runs (actual+forecast) regardless of
+            # range width, so raised back to 8 — matches dm_pipeline_dag.py's
+            # own max_active_runs=8. Data volume per JVM doesn't grow from
+            # batching (a month of daily files is still a few hundred rows),
+            # so the OOM risk this throttle was guarding against no longer
+            # scales with range width, only with concurrent distinct requests.
+            - name: AIRFLOW__CORE__PARALLELISM
+              value: "8"
+            - name: AIRFLOW__CORE__MAX_ACTIVE_TASKS_PER_DAG
+              value: "8"
+            - name: AIRFLOW__CORE__MAX_ACTIVE_RUNS_PER_DAG
+              value: "8"
             - name: CLICKHOUSE_HOST
               value: {{ .Values.clickhouse.host | quote }}
             - name: CLICKHOUSE_HTTP_PORT

@@ -39,3 +39,10 @@ class RegionsClient:
                     seen.add(wmo_index)
                     result.append(wmo_index)
         return result
+
+    async def get_names_for_wmo_indexes(self, wmo_indexes: list[str]) -> dict[str, str]:
+        if not wmo_indexes:
+            return {}
+        response = await self._client.post("/wmo-indexes/names", json={"wmo_indexes": wmo_indexes})
+        response.raise_for_status()
+        return response.json()["names"]

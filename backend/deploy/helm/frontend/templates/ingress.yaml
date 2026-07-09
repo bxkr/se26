@@ -1,0 +1,31 @@
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "frontend.fullname" . }}
+  labels:
+    {{- include "frontend.labels" . | nindent 4 }}
+  annotations:
+    gwin.yandex.cloud/externalIPv4Address: auto
+    gwin.yandex.cloud/groupName: {{ .Values.ingress.groupName | quote }}
+    gwin.yandex.cloud/rules.allowedMethods: GET,HEAD
+spec:
+  ingressClassName: gwin-default
+  {{- if .Values.ingress.certificateId }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.host | quote }}
+      secretName: yc-certmgr-cert-id-{{ .Values.ingress.certificateId }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "frontend.fullname" . }}
+                port:
+                  number: 80
+{{- end }}

@@ -1,0 +1,25 @@
+// Hard bounds on the date-range pickers — keeps requests inside the window
+// the pipeline can actually backfill without hammering Airflow (see
+// ANALYTICS_MAX_REQUEST_DAYS on analytics_api for the day-count cap).
+// historical_fetcher now sources "actual" data from Open-Meteo's Archive API
+// (migrated 2026-07-08/09), which has real coverage far beyond the old dead
+// historical-se26.bxkr.org source this cap used to be pinned to — but
+// REQUEST_MAX_DATE still needs to stay a manually-set date, not "today",
+// since the DM pipeline only has rows for dates it has actually ingested.
+export const REQUEST_MIN_DATE = "2022-01-01";
+export const REQUEST_MAX_DATE = "2026-06-30";
+
+// Pages default their date-range pickers to "last 30 days" — anchored to
+// REQUEST_MAX_DATE rather than `new Date()` so the default stays valid even
+// when the system clock is past REQUEST_MAX_DATE.
+export const DEFAULT_RANGE_TO = REQUEST_MAX_DATE;
+export const DEFAULT_RANGE_FROM = new Date(new Date(REQUEST_MAX_DATE).getTime() - 30 * 24 * 60 * 60 * 1000)
+  .toISOString()
+  .slice(0, 10);
+
+export const DEMO_CREDENTIALS = {
+  username: "demo",
+  password: "demo12345",
+};
+
+export const POLL_INTERVAL_MS = 1500;

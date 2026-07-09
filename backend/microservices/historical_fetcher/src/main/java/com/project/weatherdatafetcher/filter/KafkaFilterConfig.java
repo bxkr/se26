@@ -21,7 +21,7 @@ public class KafkaFilterConfig {
                     return true;
                 }
                 // historical_fetcher only handles the actual-weather branch;
-                // "forecast" is predict_fetcher's job. Matches the actual/
+                // "forecast" is forecast_fetcher's job. Matches the actual/
                 // forecast dataset_type convention used everywhere else in
                 // the pipeline (dm_trigger, dm_pipeline DAG, weather.dm.ready).
                 return !event.dataset_type().equals("actual");

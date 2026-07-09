@@ -14,6 +14,7 @@ from app.data.schemas import (
     RegionsForecastErrorsRequest,
     StationsForecastErrorsRequest,
 )
+from app.services.forecast_error_service import DateRangeTooLargeError
 
 router = APIRouter()
 
@@ -42,6 +43,10 @@ async def regions_forecast_errors(payload: RegionsForecastErrorsRequest, request
         )
     except RegionNotFoundError as exc:
         raise _validation_error(str(exc)) from exc
+    except DateRangeTooLargeError as exc:
+        raise _validation_error(
+            f"Date range spans {exc.requested_days} days, maximum is {exc.max_days}"
+        ) from exc
     return _status_response(result)
 
 
@@ -51,12 +56,17 @@ async def stations_forecast_errors(payload: StationsForecastErrorsRequest, reque
         raise _validation_error("Field 'stations' is required")
 
     service = request.app.state.forecast_error_service
-    result = await service.handle_stations_request(
-        endpoint="stations_forecast_errors",
-        stations=payload.stations,
-        date_from=payload.from_,
-        date_to=payload.to,
-    )
+    try:
+        result = await service.handle_stations_request(
+            endpoint="stations_forecast_errors",
+            stations=payload.stations,
+            date_from=payload.from_,
+            date_to=payload.to,
+        )
+    except DateRangeTooLargeError as exc:
+        raise _validation_error(
+            f"Date range spans {exc.requested_days} days, maximum is {exc.max_days}"
+        ) from exc
     return _status_response(result)
 
 

@@ -6,11 +6,14 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration;
+import software.amazon.awssdk.core.retry.RetryPolicy;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.S3Configuration;
 
 import java.net.URI;
+import java.time.Duration;
 
 @Configuration
 public class S3Config {
@@ -29,6 +32,19 @@ public class S3Config {
                 ))
                 .serviceConfiguration(S3Configuration.builder()
                         .pathStyleAccessEnabled(true)
+                        .build())
+                // Default SDK retry policy has no bounded per-attempt/total
+                // timeout, so a slow/retried call against Yandex Object
+                // Storage can silently stall tens of seconds with nothing
+                // above DEBUG level in the logs (observed: one GetObject in
+                // mergeAndWrite took ~30s with zero ERROR/WARN output).
+                // Bound both, and cap retries explicitly, so a repeat either
+                // fails fast and loud or is visibly a real slow call, not a
+                // silent stall.
+                .overrideConfiguration(ClientOverrideConfiguration.builder()
+                        .apiCallAttemptTimeout(Duration.ofSeconds(5))
+                        .apiCallTimeout(Duration.ofSeconds(15))
+                        .retryPolicy(RetryPolicy.builder().numRetries(2).build())
                         .build())
                 .build();
     }

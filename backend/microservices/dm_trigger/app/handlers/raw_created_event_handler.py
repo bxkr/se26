@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import re
 import uuid
 from typing import Any
 
@@ -15,9 +14,6 @@ TOPIC_TO_DATASET_TYPE = {
     "weather.actual.raw.created": "actual",
     "weather.forecast.raw.created": "forecast",
 }
-
-# Matches both "actual/date=YYYY-MM-DD.json" and "forecast/date=YYYY-MM-DD.json".
-OBJECT_KEY_DATE_RE = re.compile(r"date=(\d{4}-\d{2}-\d{2})\.json$")
 
 
 class RawCreatedEventHandler:
@@ -34,17 +30,19 @@ class RawCreatedEventHandler:
 
     def handle_message(self, payload: dict[str, Any] | str | bytes, topic: str) -> None:
         event = self._parse_payload(payload)
-        event_id = event.get("event_id", "")
+        event_id = event.get("event_id") or str(uuid.uuid4())
         trace_id = event.get("trace_id", "")
         bucket = event.get("bucket")
         object_keys = event.get("object_keys") or []
+        date_from = event.get("date_from")
+        date_to = event.get("date_to")
         source_name = event.get("source_name", "")
         event_created_at = event.get("created_at", "")
         dataset_type = TOPIC_TO_DATASET_TYPE.get(topic, "actual")
 
-        if not trace_id or not bucket or not object_keys:
+        if not trace_id or not bucket or not object_keys or not date_from or not date_to:
             self._log_error(
-                "raw.created event missing trace_id/bucket/object_keys",
+                "raw.created event missing trace_id/bucket/object_keys/date_from/date_to",
                 event_id=event_id,
                 topic=topic,
                 event=event,
@@ -52,64 +50,32 @@ class RawCreatedEventHandler:
             self._publish_failure(
                 trace_id=trace_id,
                 reason="dm_trigger_invalid_event",
-                details=f"missing trace_id/bucket/object_keys in {topic} event",
+                details=f"missing trace_id/bucket/object_keys/date_from/date_to in {topic} event",
             )
             return
 
-        # One manifest event can span several dates (date_from..date_to); a
-        # DAG run only handles one business_date, so fan out into one
-        # trigger per object_key. A failure on one date must not stop the
-        # rest of the batch from being processed.
-        for object_key in object_keys:
-            self._trigger_for_object_key(
-                event_id=event_id or str(uuid.uuid4()),
-                trace_id=trace_id,
-                bucket=bucket,
-                object_key=object_key,
-                source_name=source_name,
-                event_created_at=event_created_at,
-                dataset_type=dataset_type,
-            )
-
-    def _trigger_for_object_key(
-        self,
-        *,
-        event_id: str,
-        trace_id: str,
-        bucket: str,
-        object_key: str,
-        source_name: str,
-        event_created_at: str,
-        dataset_type: str,
-    ) -> None:
-        match = OBJECT_KEY_DATE_RE.search(object_key)
-
+        # The manifest already spans the whole date_from..date_to range in
+        # one event — a single DAG run now processes the whole range in one
+        # Spark job (s3_to_clickhouse.py reads all of object_keys via one
+        # S3A multi-file read), instead of fanning out one DAG run per day.
         try:
-            if not match:
-                raise ValueError(f"object_key does not contain a parseable date: {object_key}")
-
-            business_date = match.group(1)
-
-            # event_id stays the real manifest UUID — it's written into
-            # ClickHouse's event_id UUID column by the Spark job, so it must
-            # not be mangled. Per-date uniqueness (for dag_run_id) is the
-            # airflow_client's job, combining event_id with business_date.
             self._airflow_client.trigger_dag_run(
                 event_id=event_id,
                 trace_id=trace_id,
-                business_date=business_date,
+                date_from=date_from,
+                date_to=date_to,
                 dataset_type=dataset_type,
                 bucket=bucket,
-                object_key=object_key,
                 source_name=source_name,
                 event_created_at=event_created_at,
             )
-        except (AirflowTriggerError, ValueError) as exc:
+        except AirflowTriggerError as exc:
             self._log_error(
                 "failed to trigger dm_pipeline DAG",
                 event_id=event_id,
                 trace_id=trace_id,
-                object_key=object_key,
+                date_from=date_from,
+                date_to=date_to,
                 error=str(exc),
             )
             self._publish_failure(trace_id=trace_id, reason="dm_trigger_failed", details=str(exc))

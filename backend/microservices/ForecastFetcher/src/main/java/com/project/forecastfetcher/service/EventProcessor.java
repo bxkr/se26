@@ -1,6 +1,8 @@
 package com.project.forecastfetcher.service;
 
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.project.forecastfetcher.dto.*;
@@ -23,7 +25,7 @@ import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
@@ -113,47 +115,16 @@ public class EventProcessor {
                                 }
                             })
                     )
-                    .flatMapSequential(coordinates -> webClient.get()
-                            .uri(UriComponentsBuilder.fromUriString(externalApiUrl)
-                                    .queryParam("latitude", coordinates.getLat())
-                                    .queryParam("longitude", coordinates.getLng())
-                                    .queryParam("start_date", dt_date_from)
-                                    .queryParam("end_date", dt_date_to)
-                                    .queryParam("daily", "temperature_2m_max,temperature_2m_min,precipitation_sum,temperature_2m_mean")
-                                    .queryParam("timezone", "auto")
-                                    .build()
-                                    .toUri()
-                            )
-                            .retrieve()
-                            .bodyToMono(ForecastResponse.class)
-                            .map(forecast -> new CoordinateAndForecast(coordinates, forecast))
-                    )
-
                     .collectList()
-
+                    .flatMap(coordinatesList -> fetchForecastBatch(coordinatesList, dt_date_from, dt_date_to))
                     .map(this::convertToApiResponses)
                     .flatMapIterable(list -> list)
                     .flatMap(response -> Mono.fromRunnable(() -> {
                                 String dailyS3Key = "forecast/date=" + response.getDate().toString() + ".json";
-
-                                if (isObjectExists(bucketName, dailyS3Key)) {
-                                    log.info("Файл для даты {} уже существует в S3. Пропускаем перезапись.", response.getDate());
-                                    s3Keys.add(dailyS3Key);
-                                    return;
-                                }
-
                                 try {
-                                    String jsonPayload = objectMapper.writeValueAsString(response);
-                                    s3Client.putObject(
-                                            PutObjectRequest.builder()
-                                                    .bucket(bucketName)
-                                                    .key(dailyS3Key)
-                                                    .contentType("application/json")
-                                                    .build(),
-                                            RequestBody.fromString(jsonPayload)
-                                    );
+                                    mergeAndWrite(dailyS3Key, response);
                                     s3Keys.add(dailyS3Key);
-                                    log.info("Файл успешно загружен в S3: {}", dailyS3Key);
+                                    log.info("Файл успешно записан в S3: {}", dailyS3Key);
                                 } catch (Exception e) {
                                     log.error("Ошибка сохранения в S3 для даты {}: {}", response.getDate(), e.getMessage());
                                     throw new RuntimeException("Сбой записи в S3", e);
@@ -178,7 +149,7 @@ public class EventProcessor {
 
             OutputReceipt receipt = new OutputReceipt(
                     UUID.randomUUID().toString(), event.trace_id(),
-                    "weather.forecast.raw.created", "predict_fetcher", bucketName,
+                    "weather.forecast.raw.created", "forecast_fetcher", bucketName,
                     new ArrayList<>(s3Keys), event.date_from(),
                     event.date_to(), event.schema_version(), LocalDateTime.now().toString()
             );
@@ -197,16 +168,112 @@ public class EventProcessor {
     }
 
 
-    private boolean isObjectExists(String bucket, String key) {
-        try {
-            s3Client.headObject(HeadObjectRequest.builder().bucket(bucket).key(key).build());
-            return true;
-        } catch (NoSuchKeyException e) {
-            return false;
-        } catch (Exception e) {
-            log.error("Не удалось проверить наличие объекта {} в S3 из-за сетевой ошибки", key, e);
-            return false;
+    // A day's S3 object is shared across every request that ever asked for
+    // that day, regardless of which stations that particular request
+    // needed - a prior request for station A must not make a later request
+    // for station B silently skip fetching just because the day's key
+    // already exists. Always read-merge-write instead of skip-if-exists:
+    // existing stations for that day are preserved, freshly fetched
+    // stations are added (or overwrite a same-index entry with fresher
+    // data), and the merged file is always the one written back.
+    private void mergeAndWrite(String key, ApiResponse fresh) throws Exception {
+        Map<String, Measurement> merged = new LinkedHashMap<>();
+        ApiResponse existing = readExisting(key);
+        if (existing != null && existing.getStations() != null) {
+            for (Measurement m : existing.getStations()) {
+                merged.put(m.wmo_index(), m);
+            }
         }
+        for (Measurement m : fresh.getStations()) {
+            merged.put(m.wmo_index(), m);
+        }
+
+        ApiResponse toWrite = new ApiResponse();
+        toWrite.setDate(fresh.getDate());
+        toWrite.setStations(new ArrayList<>(merged.values()));
+
+        String jsonPayload = objectMapper.writeValueAsString(toWrite);
+        s3Client.putObject(
+                PutObjectRequest.builder().bucket(bucketName).key(key).contentType("application/json").build(),
+                RequestBody.fromString(jsonPayload)
+        );
+    }
+
+    private ApiResponse readExisting(String key) {
+        try {
+            String content = s3Client.getObjectAsBytes(
+                    GetObjectRequest.builder().bucket(bucketName).key(key).build()
+            ).asUtf8String();
+            return objectMapper.readValue(content, ApiResponse.class);
+        } catch (NoSuchKeyException e) {
+            return null;
+        } catch (Exception e) {
+            log.error("Не удалось прочитать существующий объект {} из S3, будет перезаписан заново", key, e);
+            return null;
+        }
+    }
+
+    // Open-Meteo accepts comma-joined latitude/longitude lists and returns
+    // one forecast result per coordinate, in the same order - a single batch
+    // call for every station in the event instead of one call per station.
+    // Response shape differs by cardinality: multiple coordinates yield a
+    // JSON array, a single coordinate yields a bare object - parse as a
+    // generic node first and branch, rather than assuming one shape.
+    private Mono<List<CoordinateAndForecast>> fetchForecastBatch(
+            List<Coordinates> coordinates, LocalDate from, LocalDate to
+    ) {
+        List<Coordinates> resolvable = coordinates.stream()
+                .filter(c -> c.getLat() != null && c.getLng() != null)
+                .toList();
+        if (resolvable.isEmpty()) {
+            return Mono.just(List.of());
+        }
+
+        String latitudes = resolvable.stream().map(c -> String.valueOf(c.getLat())).collect(Collectors.joining(","));
+        String longitudes = resolvable.stream().map(c -> String.valueOf(c.getLng())).collect(Collectors.joining(","));
+
+        return webClient.get()
+                .uri(UriComponentsBuilder.fromUriString(externalApiUrl)
+                        .queryParam("latitude", latitudes)
+                        .queryParam("longitude", longitudes)
+                        .queryParam("start_date", from)
+                        .queryParam("end_date", to)
+                        .queryParam("daily", "temperature_2m_max,temperature_2m_min,precipitation_sum,temperature_2m_mean")
+                        .queryParam("timezone", "auto")
+                        .build()
+                        .toUri()
+                )
+                .retrieve()
+                .bodyToMono(String.class)
+                .map(body -> {
+                    // Deserialize with our own (Jackson 2) objectMapper, not
+                    // WebClient's decoder pipeline: Spring 7's WebClient
+                    // resolves JsonNode against tools.jackson (Jackson 3),
+                    // which is a different, incompatible class from
+                    // com.fasterxml.jackson.databind.JsonNode used here.
+                    JsonNode node;
+                    try {
+                        node = objectMapper.readTree(body);
+                    } catch (Exception e) {
+                        throw new RuntimeException("Не удалось разобрать ответ Open-Meteo", e);
+                    }
+                    List<ForecastResponse> responses = node.isArray()
+                            ? objectMapper.convertValue(node, new TypeReference<List<ForecastResponse>>() {})
+                            : List.of(objectMapper.convertValue(node, ForecastResponse.class));
+
+                    if (responses.size() != resolvable.size()) {
+                        log.error(
+                                "Open-Meteo вернул {} результатов на {} запрошенных координат — сопоставляю по минимальной длине",
+                                responses.size(), resolvable.size()
+                        );
+                    }
+                    int n = Math.min(responses.size(), resolvable.size());
+                    List<CoordinateAndForecast> pairs = new ArrayList<>(n);
+                    for (int i = 0; i < n; i++) {
+                        pairs.add(new CoordinateAndForecast(resolvable.get(i), responses.get(i)));
+                    }
+                    return pairs;
+                });
     }
 
     private record CoordinateAndForecast(Coordinates coordinates, ForecastResponse forecast) {}

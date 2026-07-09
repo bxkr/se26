@@ -1,6 +1,6 @@
 # Как подключиться к dm_trigger/Airflow/Spark/ClickHouse
 
-Что построено в этом раунде и как остальным сервисам (`historical_fetcher`, будущие `predict_fetcher`/`analytics_api`) этим воспользоваться. Общая схема и дизайн-решения — `data/pipeline_flow.md`, здесь — конкретика для интеграции.
+Что построено в этом раунде и как остальным сервисам (`historical_fetcher`, `ForecastFetcher`, `analytics_api`) этим воспользоваться. Общая схема и дизайн-решения — `data/pipeline_flow.md`, здесь — конкретика для интеграции.
 
 ## Что уже работает
 
@@ -34,7 +34,7 @@ weather.actual.raw.created | weather.forecast.raw.created (Kafka)
 }
 ```
 
-`dm_trigger` фанаутит по `object_keys` — один Airflow `DagRun` на каждую дату. Обязательные поля: **`trace_id`**, **`bucket`**, **`object_keys`** (непустой список, каждый ключ должен матчить `date=YYYY-MM-DD.json`). Без них `dm_trigger` не триггерит DAG, а публикует `weather.pipeline.failed{stage: dm_trigger, reason: dm_trigger_invalid_event}`.
+`dm_trigger` триггерит **один** Airflow `DagRun` на весь манифест (не по одному на дату — раньше так было, упёрлось в память Airflow при широких диапазонах, см. `pipeline_flow.md` раздел «Батчинг dm_pipeline»). Обязательные поля: **`trace_id`**, **`bucket`**, **`object_keys`** (непустой список, каждый ключ должен матчить `date=YYYY-MM-DD.json` — используется только для sanity-проверки, что манифест не пуст), **`date_from`**, **`date_to`** (реально передаются в `dag_run.conf`, Spark-джоба сама строит список S3-ключей на каждый день диапазона). Без обязательных полей `dm_trigger` не триггерит DAG, а публикует `weather.pipeline.failed{stage: dm_trigger, reason: dm_trigger_invalid_event}`.
 
 Формат самого raw JSON-файла в S3 (то, что читает Spark) — без изменений:
 
@@ -47,9 +47,9 @@ weather.actual.raw.created | weather.forecast.raw.created (Kafka)
 }
 ```
 
-### Что должен сделать будущий `predict_fetcher`
+### Что делает `ForecastFetcher`
 
-Симметрично `historical_fetcher`, но для прогнозов: писать raw JSON (та же структура `{date, stations:[...]}`) в S3 по ключу **`forecast/date=YYYY-MM-DD.json`** и публиковать манифест в новый топик **`weather.forecast.raw.created`** (тот же формат, что `weather.actual.raw.created`, `source_name: "predict_fetcher"`, см. `contracts/events/weather.forecast.raw.created.example.json`). Остальное (`dm_trigger` → DAG → Spark → `dm_fct_daily_forecast`/`dm_fct_forecast_error` → `weather.dm.ready`) уже готово это принять — ничего сверх этого от `predict_fetcher` не требуется. Раньше это была временная Postgres-таблица `weather_forecast` — она удалена вместе с переходом на S3-прямой источник (см. `pipeline_flow.md`, «Принятые решения», п.6).
+Симметрично `historical_fetcher`, но для прогнозов: пишет raw JSON (та же структура `{date, stations:[...]}`) в S3 по ключу **`forecast/date=YYYY-MM-DD.json`** и публикует манифест в топик **`weather.forecast.raw.created`** (тот же формат, что `weather.actual.raw.created`, `source_name: "forecast_fetcher"`, см. `contracts/events/weather.forecast.raw.created.example.json`). Остальное (`dm_trigger` → DAG → Spark → `dm_fct_daily_forecast`/`dm_fct_forecast_error` → `weather.dm.ready`) принимает это без изменений.
 
 ## 2. Что нужно сделать в `analytics_api`
 
@@ -62,8 +62,9 @@ Consume два топика:
     "trace_id": "1c0aa3e8-...",
     "event_type": "weather.dm.ready",
     "dataset_type": "actual",
-    "observation_date": "1960-01-01",
-    "record_count": 2,
+    "date_from": "1960-01-01",
+    "date_to": "1960-01-02",
+    "record_count": 4,
     "schema_version": 1,
     "created_at": "2026-07-06T12:20:00Z"
   }
@@ -150,7 +151,7 @@ kubectl port-forward -n dm-pipeline svc/airflow 8080:8080
 
 ### Проверка сквозного потока
 
-Без реального `historical_fetcher`/`predict_fetcher` — положить тестовый raw JSON в S3 (боевой бакет `weather-raw`, через `aws s3 cp`/boto3 с ключами из Terraform output или Secret `weather-raw-s3`) и опубликовать манифест вручную:
+Без реального `historical_fetcher`/`ForecastFetcher` — положить тестовый raw JSON в S3 (боевой бакет `weather-raw`, через `aws s3 cp`/boto3 с ключами из Terraform output или Secret `weather-raw-s3`) и опубликовать манифест вручную:
 
 ```bash
 # 1. тестовый raw JSON в S3 (endpoint/ключи — см. раздел 3)
@@ -220,7 +221,7 @@ from kafka import KafkaProducer
 producer = KafkaProducer(bootstrap_servers=['localhost:9092'], value_serializer=lambda v: json.dumps(v).encode())
 producer.send('weather.forecast.raw.created', {
     'event_id': str(uuid.uuid4()), 'trace_id': str(uuid.uuid4()),
-    'event_type': 'weather.forecast.raw.created', 'source_name': 'predict_fetcher',
+    'event_type': 'weather.forecast.raw.created', 'source_name': 'forecast_fetcher',
     'bucket': 'weather-raw', 'object_keys': ['forecast/date=1960-01-01.json'],
     'date_from': '1960-01-01', 'date_to': '1960-01-01', 'schema_version': 1,
     'created_at': datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),

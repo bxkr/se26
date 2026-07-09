@@ -1,10 +1,12 @@
-"""DAG: S3 (raw daily JSON) -> ClickHouse (RAW/ODS/DM), одна из двух половин
-dm_trigger -> Airflow -> Spark -> ClickHouse, описанной в
+"""DAG: S3 (raw JSON за диапазон дат) -> ClickHouse (RAW/ODS/DM), одна из
+двух половин dm_trigger -> Airflow -> Spark -> ClickHouse, описанной в
 data/pipeline_flow.md.
 
 Триггерится ТОЛЬКО извне (dm_trigger, POST /api/v1/dags/dm_pipeline/dagRuns
-с conf={trace_id, business_date, dataset_type, bucket, object_key,
-source_name, event_id, event_created_at}) — расписания нет.
+с conf={trace_id, date_from, date_to, dataset_type, bucket, source_name,
+event_id, event_created_at}) — расписания нет. Один DAG-ран обрабатывает
+весь диапазон date_from..date_to одним Spark-джобом (см.
+spark_jobs/s3_to_clickhouse.py) — не по одному рану на день.
 """
 
 from __future__ import annotations
@@ -36,10 +38,10 @@ def _utc_now_iso() -> str:
 
 
 def _result_path(run_id: str) -> str:
-    # dag_run_id (not event_id/trace_id) is what's actually unique per DAG
-    # run — event_id and trace_id are both shared across the several DAG
-    # runs fanned out from one manifest event (one per business_date), so
-    # either alone would collide as a result-file name.
+    # dag_run_id is unique per manifest event now (one DAG run per manifest,
+    # not per day) — still keyed by dag_run.run_id rather than event_id/
+    # trace_id alone, since a redelivered Kafka message reuses the same
+    # dag_run_id and should overwrite the same result file, not collide.
     return f"{RESULT_DIR}/{run_id}.json"
 
 
@@ -49,7 +51,8 @@ def publish_dm_ready(**context) -> None:
     dag_run = context["dag_run"]
     conf = dag_run.conf or {}
     trace_id = conf["trace_id"]
-    business_date = conf["business_date"]
+    date_from = conf["date_from"]
+    date_to = conf["date_to"]
     dataset_type = conf.get("dataset_type", "actual")
 
     with open(_result_path(dag_run.run_id)) as fh:
@@ -60,7 +63,8 @@ def publish_dm_ready(**context) -> None:
         "trace_id": trace_id,
         "event_type": "weather.dm.ready",
         "dataset_type": dataset_type,
-        "observation_date": business_date,
+        "date_from": date_from,
+        "date_to": date_to,
         "record_count": result["record_count"],
         "schema_version": 1,
         "created_at": _utc_now_iso(),
@@ -101,17 +105,17 @@ with DAG(
         task_id="run_spark_transform",
         bash_command=(
             f"mkdir -p {RESULT_DIR} && "
-            # local[2] + explicit driver-memory: data volume here is one
-            # business_date (hundreds of rows, not big data) — local[*] plus
-            # Spark's own heap sizing on top of the concurrently-running
-            # Airflow webserver/scheduler/triggerer OOMKilled the pod on the
-            # first real run.
+            # local[2] + explicit driver-memory: even a month-wide range is
+            # still hundreds of rows, not big data — local[*] plus Spark's
+            # own heap sizing on top of the concurrently-running Airflow
+            # webserver/scheduler/triggerer OOMKilled the pod on the first
+            # real run.
             f"spark-submit --master local[2] --driver-memory 1g --jars {SPARK_JARS} {SPARK_JOB_PATH} "
-            "--business-date {{ dag_run.conf['business_date'] }} "
+            "--date-from {{ dag_run.conf['date_from'] }} "
+            "--date-to {{ dag_run.conf['date_to'] }} "
             "--trace-id {{ dag_run.conf['trace_id'] }} "
             "--dataset-type {{ dag_run.conf['dataset_type'] }} "
             "--bucket {{ dag_run.conf['bucket'] }} "
-            "--object-key {{ dag_run.conf['object_key'] }} "
             "--source-name {{ dag_run.conf['source_name'] }} "
             "--event-id {{ dag_run.conf['event_id'] }} "
             "--event-created-at {{ dag_run.conf['event_created_at'] }} "

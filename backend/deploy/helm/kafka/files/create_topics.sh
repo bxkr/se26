@@ -7,6 +7,7 @@ BOOTSTRAP_SERVER="${KAFKA_BOOTSTRAP_SERVER:-kafka:9092}"
 # Остальные темы оставляем как совместимые с текущими contracts.
 TOPICS=(
   "weather.actual.raw.created:3:1:604800000"
+  "weather.forecast.raw.created:3:1:604800000"
   "weather.clean.created:3:1:604800000"
   "weather.need_info:3:1:604800000"
   "weather.dm.ready:3:1:604800000"

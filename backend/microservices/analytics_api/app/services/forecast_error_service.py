@@ -10,10 +10,15 @@ from app.clients.regions_client import RegionsClient
 from app.config import config
 
 # dm_fct_forecast_error is an inner join of actual x forecast; a missing day
-# could be missing on either side (or both), so we always request both —
-# predict_fetcher doesn't exist yet, so the forecast side just stays pending
-# until the timeout sweep fails it. That's accepted behavior, not a bug.
+# could be missing on either side (or both), so we always request both.
 DATASET_TYPES = ("actual", "forecast")
+
+
+class DateRangeTooLargeError(Exception):
+    def __init__(self, requested_days: int, max_days: int) -> None:
+        self.requested_days = requested_days
+        self.max_days = max_days
+        super().__init__(f"requested range spans {requested_days} days, max is {max_days}")
 
 
 def _daterange(date_from: str, date_to: str) -> list[date]:
@@ -75,6 +80,8 @@ class ForecastErrorService:
 
     async def _handle(self, *, endpoint: str, wmo_indexes: list[str], date_from: str, date_to: str) -> dict:
         all_days = _daterange(date_from, date_to)
+        if len(all_days) > config.MAX_REQUEST_DAYS:
+            raise DateRangeTooLargeError(len(all_days), config.MAX_REQUEST_DAYS)
         covered = await self._clickhouse.get_covered_days(
             wmo_indexes=wmo_indexes, date_from=date_from, date_to=date_to
         )
@@ -84,6 +91,7 @@ class ForecastErrorService:
             rows = await self._clickhouse.get_rows(
                 wmo_indexes=wmo_indexes, date_from=date_from, date_to=date_to
             )
+            rows = await self._attach_station_names(rows)
             return {"status": "ready", "data": {"rows": rows}}
 
         trace_ids = await self._request_missing_ranges(wmo_indexes=wmo_indexes, missing_days=missing_days)
@@ -99,6 +107,13 @@ class ForecastErrorService:
             await self._redis.add_waiter(trace_id, request_id, ttl=config.REQUEST_TIMEOUT_SECONDS)
 
         return {"status": "pending", "request_id": request_id}
+
+    async def _attach_station_names(self, rows: list[dict]) -> list[dict]:
+        distinct = list(dict.fromkeys(r["wmo_index"] for r in rows))
+        names = await self._regions.get_names_for_wmo_indexes(distinct)
+        for r in rows:
+            r["station_name"] = names.get(r["wmo_index"])
+        return rows
 
     async def _request_missing_ranges(self, *, wmo_indexes: list[str], missing_days: list[date]) -> list[str]:
         trace_ids: list[str] = []

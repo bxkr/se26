@@ -8,6 +8,7 @@ from typing import Any
 
 from app.clients.clickhouse_client import ClickHouseClient
 from app.clients.redis_client import RedisClient
+from app.clients.regions_client import RegionsClient
 from app.config import config
 
 logger = logging.getLogger("analytics_api.dm_events_handler")
@@ -23,10 +24,16 @@ class DmEventsHandler:
     """
 
     def __init__(
-        self, *, redis_client: RedisClient, clickhouse: ClickHouseClient, loop: asyncio.AbstractEventLoop
+        self,
+        *,
+        redis_client: RedisClient,
+        clickhouse: ClickHouseClient,
+        regions_client: RegionsClient,
+        loop: asyncio.AbstractEventLoop,
     ) -> None:
         self._redis = redis_client
         self._clickhouse = clickhouse
+        self._regions = regions_client
         self._loop = loop
 
     def handle_message(self, payload: bytes | str | dict, topic: str) -> None:
@@ -82,6 +89,10 @@ class DmEventsHandler:
         rows = await self._clickhouse.get_rows(
             wmo_indexes=query["wmo_indexes"], date_from=query["date_from"], date_to=query["date_to"]
         )
+        distinct = list(dict.fromkeys(r["wmo_index"] for r in rows))
+        names = await self._regions.get_names_for_wmo_indexes(distinct)
+        for r in rows:
+            r["station_name"] = names.get(r["wmo_index"])
         await self._redis.mark_request_ready(request_id, {"rows": rows})
 
 
@@ -105,6 +116,5 @@ async def _sweep_once(redis_client: RedisClient) -> None:
         if (now - updated_at).total_seconds() > config.REQUEST_TIMEOUT_SECONDS:
             await redis_client.mark_request_failed(
                 request_id,
-                "timed out waiting for upstream data (forecast side needs predict_fetcher, "
-                "which may not exist yet — this is expected until it's built)",
+                "timed out waiting for upstream data",
             )

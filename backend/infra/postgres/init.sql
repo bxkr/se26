@@ -6,4 +6,14 @@ BEGIN;
 -- (see data/pipeline_flow.md, "Принятые решения"). This database stays
 -- alive for future front_api user data; no weather-data tables here anymore.
 
+CREATE TABLE IF NOT EXISTS users (
+    id            UUID PRIMARY KEY,
+    username      TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    role          TEXT NOT NULL CHECK (role IN ('user', 'admin')),
+    is_active     BOOLEAN NOT NULL DEFAULT true,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 COMMIT;

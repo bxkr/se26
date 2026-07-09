@@ -1,19 +1,25 @@
-"""PySpark job: S3 raw daily JSON -> ClickHouse (RAW/ODS/DM).
+"""PySpark job: S3 raw daily JSON (whole date_from..date_to range) -> ClickHouse (RAW/ODS/DM).
 
-Reads a single daily raw file (`s3a://<bucket>/<object_key>`, one JSON
-document `{date, stations: [...]}`) directly via the S3A connector — no
-Postgres involved anymore (see data/pipeline_flow.md, "Принятые решения").
---dataset-type selects the target ClickHouse tables: "actual" writes
-*_weather* tables (source: historical_fetcher via weather.actual.raw.created),
-"forecast" writes *_forecast* tables (source: predict_fetcher, still
-unbuilt, via weather.forecast.raw.created).
+Reads every daily raw file in [date_from, date_to] for one dataset_type
+(`s3a://<bucket>/<prefix>/date=<day>.json`, one JSON document per day
+`{date, stations: [...]}`) directly via the S3A connector in a single
+multi-file read — no Postgres involved anymore (see data/pipeline_flow.md,
+"Принятые решения"). One Spark job now processes the whole range in one
+JVM instead of one job per day (see dm_trigger's RawCreatedEventHandler and
+dm_pipeline_dag.py) — a day-by-day fan-out used to mean one spark-submit
+JVM per day, which was the actual bottleneck for wide date ranges, not data
+volume (even a month of daily files is a few hundred rows).
+--dataset-type selects the target ClickHouse tables and the S3 key prefix:
+"actual" writes *_weather* tables (source: historical_fetcher via
+weather.actual.raw.created), "forecast" writes *_forecast* tables (source:
+forecast_fetcher via weather.forecast.raw.created).
 
 After writing the DM layer (in either branch) the dm_fct_forecast_error mart
 is recomputed — inner join dm_fct_daily_weather x dm_fct_daily_forecast on
-(wmo_index, day) for this business_date, signed and absolute error per
-metric. If the other side doesn't exist yet the join is empty and nothing is
-written; the mart backfills whenever the second side arrives (order of
-actual/forecast doesn't matter).
+(wmo_index, day) for every day in [date_from, date_to], signed and absolute
+error per metric. Days where the other side doesn't exist yet are simply
+absent from the join; the mart backfills whenever the second side arrives
+(order of actual/forecast doesn't matter).
 
 Run by dm_pipeline_dag.py via spark-submit --master local[2] (no separate
 Spark cluster, lean profile, one pod alongside Airflow standalone).
@@ -24,18 +30,20 @@ from __future__ import annotations
 import argparse
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
 TABLE_CONFIG = {
     "actual": {
+        "prefix": "actual",
         "raw_table": "raw_weather_events",
         "ods_table": "ods_daily_weather",
         "dm_table": "dm_fct_daily_weather",
     },
     "forecast": {
+        "prefix": "forecast",
         "raw_table": "raw_forecast_events",
         "ods_table": "ods_daily_forecast",
         "dm_table": "dm_fct_daily_forecast",
@@ -47,18 +55,40 @@ ERROR_METRICS = ["temperature", "temp_min", "temp_max", "precipitation_mm"]
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--business-date", required=True, help="YYYY-MM-DD, observation_date/day")
+    parser.add_argument("--date-from", required=True, help="YYYY-MM-DD, inclusive range start")
+    parser.add_argument("--date-to", required=True, help="YYYY-MM-DD, inclusive range end")
     parser.add_argument("--trace-id", required=True)
     parser.add_argument(
         "--dataset-type", required=True, choices=sorted(TABLE_CONFIG), help="actual|forecast"
     )
-    parser.add_argument("--bucket", required=True, help="S3 bucket holding the raw daily JSON file")
-    parser.add_argument("--object-key", required=True, help="e.g. actual/date=1960-01-01.json")
-    parser.add_argument("--source-name", required=True, help="producer of the raw file, e.g. historical_fetcher")
-    parser.add_argument("--event-id", required=True, help="raw.created event_id (already made unique per date)")
+    parser.add_argument("--bucket", required=True, help="S3 bucket holding the raw daily JSON files")
+    parser.add_argument("--source-name", required=True, help="producer of the raw files, e.g. historical_fetcher")
+    parser.add_argument("--event-id", required=True, help="raw.created event_id (unique per manifest)")
     parser.add_argument("--event-created-at", required=True, help="ISO8601 created_at from the raw.created event")
-    parser.add_argument("--result-path", required=True, help="where to write {record_count, business_date} JSON")
+    parser.add_argument("--result-path", required=True, help="where to write {record_count, date_from, date_to} JSON")
     return parser.parse_args()
+
+
+def _daterange(date_from: str, date_to: str) -> list[str]:
+    start = datetime.strptime(date_from, "%Y-%m-%d").date()
+    end = datetime.strptime(date_to, "%Y-%m-%d").date()
+    days = []
+    current = start
+    while current <= end:
+        days.append(current.isoformat())
+        current += timedelta(days=1)
+    return days
+
+
+def _object_keys_for_range(dataset_type: str, date_from: str, date_to: str) -> list[str]:
+    # historical_fetcher/ForecastFetcher always write exactly one file per
+    # day in the requested range before publishing the manifest receipt
+    # (even when the upstream source has no data for that day — the file
+    # still exists with null measurement fields) — so the object key for
+    # every day is fully deterministic, no need to carry the manifest's
+    # object_keys list through to Spark.
+    prefix = TABLE_CONFIG[dataset_type]["prefix"]
+    return [f"{prefix}/date={day}.json" for day in _daterange(date_from, date_to)]
 
 
 def clickhouse_jdbc_url() -> str:
@@ -69,20 +99,21 @@ def clickhouse_jdbc_url() -> str:
 
 
 def recompute_forecast_error(
-    spark: SparkSession, *, business_date: str, clickhouse_props: dict
+    spark: SparkSession, *, date_from: str, date_to: str, clickhouse_props: dict
 ) -> None:
-    """Recompute dm_fct_forecast_error for business_date from the current DM
-    tables (both actual and forecast may or may not be populated yet)."""
+    """Recompute dm_fct_forecast_error for every day in [date_from, date_to]
+    from the current DM tables (both actual and forecast may or may not be
+    populated yet for any given day)."""
     weather_df = spark.read.jdbc(
         url=clickhouse_jdbc_url(),
         table="dm_fct_daily_weather_current",
         properties=clickhouse_props,
-    ).filter(F.col("day") == business_date)
+    ).filter(F.col("day").between(F.lit(date_from), F.lit(date_to)))
     forecast_df = spark.read.jdbc(
         url=clickhouse_jdbc_url(),
         table="dm_fct_daily_forecast_current",
         properties=clickhouse_props,
-    ).filter(F.col("day") == business_date)
+    ).filter(F.col("day").between(F.lit(date_from), F.lit(date_to)))
 
     joined = weather_df.alias("w").join(
         forecast_df.alias("f"),
@@ -138,14 +169,26 @@ def main() -> None:
         "driver": "com.clickhouse.jdbc.ClickHouseDriver",
     }
 
-    # The raw file is a single JSON document {date, stations: [...]}, not
-    # JSON-lines — multiLine is required or Spark reads it as truncated junk.
-    raw_doc_df = spark.read.option("multiLine", "true").json(
-        f"s3a://{args.bucket}/{args.object_key}"
+    object_keys = _object_keys_for_range(args.dataset_type, args.date_from, args.date_to)
+    paths = [f"s3a://{args.bucket}/{key}" for key in object_keys]
+
+    # Each raw file is a single JSON document {date, stations: [...]}, not
+    # JSON-lines — multiLine is required or Spark reads it as truncated
+    # junk. Spark natively accepts a list of paths and unions them into one
+    # DataFrame — this is what turns N per-day JVMs into one JVM for the
+    # whole range.
+    raw_doc_df = spark.read.option("multiLine", "true").json(paths).withColumn(
+        # Recovers which source file each row came from, since object_key
+        # is no longer a single literal shared by every row in the batch —
+        # captured right at read time (before explode) and carried through,
+        # stripping the s3a://bucket/ prefix down to "<prefix>/date=....json".
+        "raw_object_key",
+        F.regexp_extract(F.input_file_name(), r"([^/]+/date=[0-9-]+\.json)$", 1),
     )
     stations_df = raw_doc_df.select(
         F.col("date").alias("observation_date"),
         F.explode("stations").alias("station"),
+        F.col("raw_object_key"),
     )
 
     record_count = stations_df.count()
@@ -162,7 +205,7 @@ def main() -> None:
         "timestamp"
     )
 
-    # RAW: аудит-зеркало исходных station-строк для этого business_date.
+    # RAW: аудит-зеркало исходных station-строк за весь диапазон дат.
     raw_out = stations_df.select(
         F.lit(args.source_name).alias("source_name"),
         F.col("observation_date"),
@@ -174,7 +217,7 @@ def main() -> None:
         F.col("station.max_temp").alias("max_temp"),
         F.col("station.precipitation").alias("precipitation"),
         F.lit(args.bucket).alias("raw_bucket"),
-        F.lit(args.object_key).alias("raw_object_key"),
+        F.col("raw_object_key"),
         F.lit(args.event_id).alias("event_id"),
         trace_id_lit.alias("trace_id"),
         event_created_at_col.alias("event_created_at"),
@@ -221,7 +264,7 @@ def main() -> None:
     )
 
     recompute_forecast_error(
-        spark, business_date=args.business_date, clickhouse_props=clickhouse_props
+        spark, date_from=args.date_from, date_to=args.date_to, clickhouse_props=clickhouse_props
     )
 
     os.makedirs(os.path.dirname(args.result_path), exist_ok=True)
@@ -229,7 +272,8 @@ def main() -> None:
         json.dump(
             {
                 "record_count": record_count,
-                "business_date": args.business_date,
+                "date_from": args.date_from,
+                "date_to": args.date_to,
                 "dataset_type": args.dataset_type,
             },
             fh,

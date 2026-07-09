@@ -43,35 +43,38 @@ class AirflowClient:
         *,
         event_id: str,
         trace_id: str,
-        business_date: str,
+        date_from: str,
+        date_to: str,
         dataset_type: str,
         bucket: str,
-        object_key: str,
         source_name: str,
         event_created_at: str,
     ) -> str:
-        """Trigger a run of the dm_pipeline DAG for one (trace_id, business_date).
+        """Trigger a run of the dm_pipeline DAG for one manifest event,
+        covering its whole date_from..date_to range in a single Spark job.
 
-        dag_run_id combines event_id with business_date so a redelivered
-        Kafka message triggers Airflow's existing-run conflict instead of a
-        duplicate run (idempotent), and so multiple dates fanned out from
-        the same manifest event get distinct DAG runs. event_id itself is
-        passed through to conf unmodified — it's written into ClickHouse's
-        event_id UUID column by the Spark job, so it must stay a real UUID.
-        dataset_type ("actual"|"forecast") tells the DAG/Spark job which
-        ClickHouse target tables to use; bucket/object_key tell Spark which
-        raw JSON file to read directly from S3.
+        dag_run_id is just {dataset_type}-{event_id} — one DAG run per
+        manifest now (not one per day), and event_id is already unique per
+        manifest, so no date suffix is needed for uniqueness. A redelivered
+        Kafka message hits the same dag_run_id and Airflow's existing-run
+        409 (handled below) makes retriggering idempotent. event_id itself
+        is passed through to conf unmodified — it's written into
+        ClickHouse's event_id UUID column by the Spark job, so it must stay
+        a real UUID. dataset_type ("actual"|"forecast") tells the DAG/Spark
+        job which ClickHouse target tables to use and which S3 key prefix
+        to read; bucket/date_from/date_to tell Spark which raw JSON files to
+        read directly from S3 (it derives the per-day object keys itself).
         """
-        dag_run_id = f"{dataset_type}-{event_id}-{business_date}"
+        dag_run_id = f"{dataset_type}-{event_id}"
         url = f"{self._base_url}/api/v1/dags/{self._dag_id}/dagRuns"
         body = {
             "dag_run_id": dag_run_id,
             "conf": {
                 "trace_id": trace_id,
-                "business_date": business_date,
+                "date_from": date_from,
+                "date_to": date_to,
                 "dataset_type": dataset_type,
                 "bucket": bucket,
-                "object_key": object_key,
                 "source_name": source_name,
                 "event_id": event_id,
                 "event_created_at": event_created_at,
@@ -100,7 +103,8 @@ class AirflowClient:
             "dag run triggered",
             dag_run_id=dag_run_id,
             trace_id=trace_id,
-            business_date=business_date,
+            date_from=date_from,
+            date_to=date_to,
         )
         return dag_run_id
 
