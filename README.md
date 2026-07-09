@@ -1,3 +1,7 @@
+<div align=center>
+<img height="500" alt="Схема" src="https://github.com/user-attachments/assets/4764a38c-24f5-4577-941e-081930f17232" />
+</div>
+
 # se26 — Weather Forecast Accuracy Platform
 
 Событийный (event-driven) сервис, который сравнивает прогнозы погоды с фактическими наблюдениями и показывает,
